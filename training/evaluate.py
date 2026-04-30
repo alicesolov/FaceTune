@@ -189,8 +189,18 @@ def evaluate(
         )
 
     logging.info("Loading checkpoint from '%s' …", weights_path)
-    model = create_resnet50_binary_classifier(pretrained=False)
-    model = load_binary_classifier_weights(model, str(weights_path))
+    checkpoint_meta = torch.load(weights_path, map_location="cpu")
+    model_name = checkpoint_meta.get("model_name", "resnet50")
+    logging.info("Checkpoint architecture: %s", model_name)
+
+    if model_name == "mobilenet":
+        from model.mobilenet import create_mobilenet_v3_classifier, load_mobilenet_weights
+        model = create_mobilenet_v3_classifier(pretrained=False)
+        load_mobilenet_weights(model, str(weights_path))
+    else:
+        model = create_resnet50_binary_classifier(pretrained=False)
+        model = load_binary_classifier_weights(model, str(weights_path))
+
     model = model.to(device)
     model.eval()
 

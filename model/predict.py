@@ -114,42 +114,43 @@ class Predictor:
           `model_status_note` and leaves the predictor in placeholder mode.
         """
 
-        try:
-            model = create_resnet50_binary_classifier(pretrained=False)
-        except Exception as error:
-            self.model = None
-            self.model_status_note = (
-                "Model architecture could not be constructed. "
-                f"Reason: {error}"
-            )
-            self.using_placeholder = True
-            return
-
         if not self.weights_path.exists():
             self.model = None
             self.model_status_note = (
-                "Model architecture is defined, but no checkpoint was found at "
+                "No checkpoint found at "
                 f"`{self.weights_path}`. Returning a safe placeholder result."
             )
             self.using_placeholder = True
             return
 
         try:
-            model = load_binary_classifier_weights(model, str(self.weights_path))
+            ckpt = torch.load(self.weights_path, map_location="cpu")
+            model_name = ckpt.get("model_name", "resnet50")
+
+            if model_name == "mobilenet":
+                from model.mobilenet import (
+                    create_mobilenet_v3_classifier,
+                    load_mobilenet_weights,
+                )
+                model = create_mobilenet_v3_classifier(pretrained=False)
+                load_mobilenet_weights(model, str(self.weights_path))
+            else:
+                model = create_resnet50_binary_classifier(pretrained=False)
+                model = load_binary_classifier_weights(model, str(self.weights_path))
+
             model.to(self.device)
             model.eval()
         except Exception as error:
             self.model = None
             self.model_status_note = (
-                "A checkpoint exists, but it could not be loaded into the baseline "
-                f"ResNet-50 architecture. Reason: {error}"
+                f"Checkpoint exists but could not be loaded. Reason: {error}"
             )
             self.using_placeholder = True
             return
 
         self.model = model
         self.model_status_note = (
-            f"Loaded checkpoint from `{self.weights_path}` into the baseline ResNet-50 architecture."
+            f"Loaded {model_name} checkpoint from `{self.weights_path}`."
         )
         self.using_placeholder = False
 
