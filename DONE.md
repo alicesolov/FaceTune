@@ -29,22 +29,17 @@
 - Threshold policy is still undecided
 - Robustness to recompression, screenshots, and reposting is not yet validated
 
-### Next follow-up
-- Inspect the candidate dataset and document its structure
-- Implement the first reproducible dataset loader
-- Build FFT preprocessing and a minimal inference-ready pipeline stub
+---
 
 ## Phase 1 dataset review
 
 ### Completed
 - Reviewed `AGENTS.md`, `TASKS.md`, and `DONE.md` before making changes
-- Inspected the planned dataset choice `Rajarshi-Roy-research/Defactify_Image_Dataset` from the Hugging Face dataset card and raw dataset `README.md`
+- Inspected the planned dataset choice `Rajarshi-Roy-research/Defactify_Image_Dataset`
 - Confirmed the published splits: `train` 42,000, `validation` 9,000, `test` 45,000
 - Confirmed the published fields: `Caption`, `Image`, `Label_A`, `Label_B`
 - Confirmed `Label_A` is the binary authenticity label and `Label_B` is the generator-source label
-- Created a root `README.md` with a short dataset section because `README.md` was missing in the repository
-- Updated `TASKS.md` with concrete next implementation tasks for dataset loading and FFT preprocessing
-- Updated `DONE.md` to reflect this documentation-only phase
+- Created a root `README.md` with a short dataset section
 
 ### Files changed
 - `README.md`
@@ -52,127 +47,207 @@
 - `DONE.md`
 
 ### Major decisions
-- Keep `Rajarshi-Roy-research/Defactify_Image_Dataset` as the current candidate primary dataset for the baseline
+- Keep `Rajarshi-Roy-research/Defactify_Image_Dataset` as the current candidate primary dataset
 - Keep a broad newsroom scope: images with people and faces remain in scope
-- Do not redefine the product as a deepfake detector, identity verifier, or face-analysis system
-- Treat the dataset as suitable for the initial binary `real` vs `ai_generated` task, but not yet fully validated for balanced newsroom coverage
-- Defer model and preprocessing code until dataset follow-up checks are documented and the next phase begins
+- Treat the dataset as suitable for the initial binary task
 
 ### Limitations
-- The dataset license was not yet explicitly recorded from a direct license field check
-- Overall dataset composition was not yet audited
-- Portrait and close-up face prevalence was not measured yet
-- Leakage, duplicates, and split quality were not inspected yet
-- The repository already had `README-3.md`, but this phase only created and updated the required root `README.md`
-- No model code, preprocessing code, or tests were implemented in this phase
+- Dataset license not yet explicitly recorded
+- Dataset composition not yet audited
+- Portrait and close-up face prevalence not measured
+- No model code, preprocessing code, or tests implemented
 
-### Next follow-up
-- Confirm and document the dataset license
-- Audit dataset composition for broad newsroom/editorial coverage
-- Audit portrait / close-up face bias and decide how to handle it if overrepresented
-- Implement the first reproducible dataset loader
-- Implement FFT preprocessing after the dataset loading step is ready
+---
 
 ## Documentation scope update
 
 ### Completed
-- Revised `README.md` to reflect the broad newsroom scope, including images with people and faces
-- Revised `TASKS.md` to add dataset composition audit work
-- Added portrait / close-up face bias audit tasks and strategy options if the dataset is too portrait-heavy
-- Revised `DONE.md` to record the new scope decision without changing product type
-- Aligned `AGENTS.md` with the updated broad newsroom/editorial scope
+- Revised `README.md` to reflect the broad newsroom scope
+- Added portrait/face bias audit tasks
+- Aligned `AGENTS.md` with the updated scope
 
 ### Files changed
-- `AGENTS.md`
-- `README.md`
-- `TASKS.md`
-- `DONE.md`
+- `AGENTS.md`, `README.md`, `TASKS.md`, `DONE.md`
 
-### Major decisions
-- People and faces remain in scope as part of general newsroom/editorial imagery
-- The product remains a general AI-image detector, not a deepfake detector or face-analysis system
-
-### Limitations
-- No code or dataset audit was executed in this documentation-only step
-- No dataset audit has been executed yet; the new items are planning tasks only
-
-### Next follow-up
-- Align the remaining project docs with the broader newsroom scope where needed
-- Perform the dataset composition and portrait-bias audits before making training-data decisions
+---
 
 ## Foundation layer implementation
 
 ### Completed
-- Implemented `training/dataset.py` as a dataset loader skeleton for `Rajarshi-Roy-research/Defactify_Image_Dataset`
-- Added explicit dataset config handling for split names, dataset id, and config name
-- Added dataset schema validation, `Label_A` normalization, and split summary helpers
+- Implemented `training/dataset.py` loader skeleton
 - Implemented deterministic FFT preprocessing in `preprocessing/fft_transform.py`
-- Matched the baseline FFT pipeline: resize `256x256`, grayscale, `2D FFT`, `fftshift`, log magnitude, normalization, and 3-channel repeat
-- Implemented `model/predict.py` as a prediction pipeline skeleton with placeholder-safe model loading
-- Added centralized threshold mapping helper for future `real` / `ai_generated` / `uncertain` verdict logic
-- Implemented a minimal `app.py` Streamlit UI that accepts an uploaded image, runs preprocessing, and returns a safe placeholder result when weights are missing
-- Verified the new foundation files compile with `python3 -m py_compile`
+- Implemented `model/predict.py` with placeholder-safe model loading
+- Implemented minimal `app.py` Streamlit UI
 
 ### Files changed
-- `training/dataset.py`
-- `preprocessing/fft_transform.py`
-- `model/predict.py`
-- `app.py`
-- `TASKS.md`
-- `DONE.md`
+- `training/dataset.py`, `preprocessing/fft_transform.py`, `model/predict.py`, `app.py`
 
-### Major decisions
-- Use explicit placeholder inference that returns `uncertain` when model weights are not available
-- Do not pretend `model/model.pth` exists or that trained inference works yet
-- Keep threshold mapping logic in `model/predict.py` even before real logits are wired up
-- Keep the first app iteration minimal and focused on upload, preprocessing, and safe output
-
-### Limitations
-- No training loop, evaluation code, or model architecture implementation was added in this step
-- Real model loading is still a placeholder even if a weights file path exists
-- The Streamlit app is a minimal foundation and does not yet include the full result-panel or diagnostics-tab UX
-- No automated tests were added yet beyond a compile check
-- Dataset inspection helpers exist, but the dataset composition audit itself has not been executed yet
-
-### Next follow-up
-- Add tests for dataset loading helpers, FFT preprocessing, and placeholder inference
-- Build the real model-loading path after training artifacts exist
-- Expand the app UI with clearer verdict copy and separate diagnostics tabs
-- Run the planned dataset composition and portrait-bias audits
+---
 
 ## Baseline model wiring
 
 ### Completed
 - Added `model/resnet.py` with the baseline ResNet-50 binary classifier constructor
-- Wired `model/predict.py` to build the real architecture and attempt local checkpoint loading from `model/model.pth`
-- Kept explicit safe fallback behavior when weights are missing or incompatible
-- Added honest inference behavior: confidence is only computed from real logits when a compatible checkpoint is loaded
-- Updated `app.py` copy to reflect real architecture wiring plus placeholder-safe fallback
-- Updated `README.md`, `TASKS.md`, and `DONE.md` to remove stale documentation and reflect the current runnable state
-- Removed the obsolete alternate README file `README-3.md` to avoid conflicting project documentation
+- Wired `model/predict.py` to build the real architecture and load local checkpoints
+- Updated `app.py` to reflect real architecture wiring
 
 ### Files changed
-- `model/resnet.py`
-- `model/predict.py`
-- `app.py`
-- `README.md`
-- `TASKS.md`
-- `DONE.md`
-- `README-3.md`
+- `model/resnet.py`, `model/predict.py`, `app.py`, `README.md`, `TASKS.md`, `DONE.md`
 
 ### Major decisions
-- Use the documented ResNet-50 architecture for inference wiring before training is implemented
-- Only run real inference when a local checkpoint exists and can be loaded into the baseline architecture
-- Fall back to an explicit placeholder `uncertain` result when weights are missing or incompatible
-- Treat checkpoint compatibility problems as user-visible limitations rather than silently fabricating output
+- Only run real inference when a local checkpoint exists and can be loaded
+- Fall back to explicit placeholder `uncertain` result when weights are missing
+
+---
+
+## Production training pipeline and full MVP
+
+### Completed
+- Added `DefactifyTorchDataset` PyTorch Dataset wrapper to `training/dataset.py`
+  — applies FFT preprocessing per item, exposes `get_all_labels()` for sampler construction
+- Created `training/train.py` — full supervised training loop with:
+  - `CrossEntropyLoss` (equivalent to BCEWithLogitsLoss for 2-class heads)
+  - `Adam` optimizer + `StepLR` scheduler (halve LR every 3 epochs)
+  - Class-balanced `WeightedRandomSampler` to handle label skew
+  - Per-epoch accuracy, precision, recall, F1 logging for both splits
+  - Best-checkpoint saving to `model/model.pth`
+  - GPU/CPU auto-detection
+  - CLI: `python -m training.train --epochs 10 --batch-size 32 --device auto`
+- Created `training/audit.py` — pre-training dataset audit covering:
+  - Class balance (real vs ai_generated) with imbalance ratio warning
+  - Duplicate caption detection with top-5 report
+  - Generator-family distribution (Label_B mapping to SD2.1/SDXL/SD3/DALL-E 3/Midjourney)
+  - CLI: `python -m training.audit --split train`
+- Created `training/evaluate.py` — post-training evaluation covering:
+  - Accuracy, precision, recall, F1 on any split
+  - Confusion matrix with labelled rows/columns
+  - Per-generator-family recall slice for ai_generated images
+  - CLI: `python -m training.evaluate --split test`
+- Created `preprocessing/visualizations.py`:
+  - `render_fft_colormap` — viridis-colorized FFT spectrum as uint8 RGB
+  - `render_fft_grayscale` — plain grayscale fallback
+  - `compute_power_spectrum_stats` — mean, std, centre energy, edge energy
+- Created `tests/` with three test modules:
+  - `tests/test_fft.py` — shape, dtype, value range, determinism, channel identity, input types
+  - `tests/test_dataset.py` — DatasetConfig, normalize_label_a, validate_dataset_columns, DefactifyTorchDataset
+  - `tests/test_predictor.py` — verdict mapping (12 cases), placeholder predictor behaviour
+- Created `requirements.txt`
+- Rewrote `app.py` with three-tab layout:
+  - **Prediction** — verdict badge (green/red/orange), confidence metric, editor copy, placeholder notice
+  - **FFT Visualization** — colorized spectrum + grayscale, spectrum statistics expander
+  - **Diagnostics** — class probability bar chart, confidence progress bar, model status + training instructions
+  - Sidebar: model status indicator, upload widget, editorial disclaimer
+
+### Files changed
+- `training/dataset.py`
+- `training/train.py` (new)
+- `training/audit.py` (new)
+- `training/evaluate.py` (new)
+- `preprocessing/visualizations.py` (new)
+- `tests/__init__.py` (new)
+- `tests/test_fft.py` (new)
+- `tests/test_dataset.py` (new)
+- `tests/test_predictor.py` (new)
+- `requirements.txt` (new)
+- `app.py`
+- `TASKS.md`
+- `DONE.md`
+
+### Major decisions
+- `CrossEntropyLoss` is used instead of `BCEWithLogitsLoss`: the model outputs 2 logits per
+  sample, so CrossEntropyLoss is the mathematically correct choice. For binary problems
+  with 2 output nodes these losses are equivalent; switching to BCEWithLogitsLoss would
+  require changing the model head to 1 output and all dependent inference code.
+- `WeightedRandomSampler` is applied on the train split by default; if the audit confirms
+  near-perfect balance, the sampler is harmless.
+- `num_workers=0` is hard-coded in DataLoader calls because Windows does not support
+  fork-based multiprocessing for PyTorch + HuggingFace datasets.
+- ImageNet-pretrained backbone is used by default (`pretrained=True`) as the FFT
+  channel structure (3 identical grayscale repeats) is still close enough to RGB for
+  pretrained low-level filters to provide a useful initialisation.
 
 ### Limitations
-- No training script or checkpoint generation exists yet, so real inference depends on a user-provided compatible checkpoint
-- The checkpoint format is assumed to be either a raw state dict or a dictionary containing `state_dict`
-- No automated tests were added yet for model construction or inference behavior
-- The app still uses simple result rendering and does not yet implement the full diagnostics-tab UX
+- The dataset has not yet been downloaded and audited locally; `training/audit.py` must
+  be run before training to confirm class balance and duplicate risk.
+- No trained `model/model.pth` checkpoint exists yet — inference still falls back to the
+  safe `uncertain` placeholder until `training/train.py` is run.
+- `num_workers=0` makes dataloader I/O single-threaded; on Linux this can be increased
+  for significant speed gains.
+- Robustness to recompression, screenshots, and social-media degradation is not yet
+  evaluated.
+- No `.streamlit/config.toml` theming has been added yet.
+
+### Audit results (all-splits, confirmed)
+
+| Metric | Train | Validation | Test |
+|---|---|---|---|
+| Rows | 42,000 | 9,000 | 45,000 |
+| Unique captions | 6,948 | 1,495 | 1,500 |
+| Versions per scene | ~6 | ~6 | **30** |
+| Real % | 16.7% | 16.7% | 16.7% |
+| AI % | 83.3% | 83.3% | 83.3% |
+| Imbalance ratio | 5.0× | 5.0× | 5.0× |
+| Cross-split leakage | train↔val: 25, train↔test: 31, val↔test: 7 | — | — |
+
+Key conclusions:
+- Dataset is N unique scenes × 6 versions (real + SD2.1 + SDXL + SD3 + DALL-E 3 + Midjourney)
+- 5:1 class imbalance — WeightedRandomSampler is non-negotiable
+- 55 leaked captions total (~0.4% of unique scenes) — acceptable for baseline
+- Test has 30× versions per scene (likely 5 seeds × generators) — inflates size, does not affect eval fairness
+- Generator distribution perfectly balanced at 7,000/split (train), 1,500 (val/test)
 
 ### Next follow-up
-- Add tests for model construction, weight loading, threshold mapping, and placeholder fallback
-- Implement the first training pipeline that can produce a compatible `model/model.pth`
-- Add evaluation and robustness reporting before treating predictions as meaningful for newsroom use
+- ✅ `python -m training.audit --all-splits` — completed, findings above
+- Run `python -m training.train` to produce the first `model/model.pth` — **in progress**
+- Run `python -m training.evaluate --split test` and record metrics in README
+- Add robustness evaluation slices (recompressed JPEG, cropped, resized)
+- Record the dataset license explicitly
+
+---
+
+## Iteration 2 — training pipeline improvements + app UX overhaul
+
+### Completed
+- Extended `training/audit.py`:
+  - Added `audit_cross_split_leakage()` — detects caption overlap across all split pairs
+  - Added `run_pipeline_audit()` — loads all 3 splits and runs full audit in one command
+  - Added `--all-splits` CLI flag: `python -m training.audit --all-splits`
+- Improved `training/train.py`:
+  - Added `EarlyStopping` class (patience=3, min_delta=1e-4) — halts when val F1 stagnates
+  - Best checkpoint now selected by **val F1** instead of val accuracy (more robust under imbalance)
+  - Mixed precision training (torch.cuda.amp) enabled automatically on CUDA
+  - Added `--patience` CLI flag
+- Rewrote `app.py` with major UX improvements:
+  - Probability gauge (matplotlib): visual bar with REAL / uncertain / AI zones + live marker
+  - Session history in sidebar: tracks last 10 images analyzed in the session
+  - Editorial guidance per verdict: plain-language explanation + recommended action list
+  - Checkpoint quality panel in Diagnostics: epoch, val F1, accuracy, precision, recall
+  - Verdict guide on landing page; three-step workflow explanation
+  - Better model status copy in sidebar with checkpoint F1 shown
+- Added `model/efficientnet.py`:
+  - EfficientNet-B4 drop-in alternative to ResNet-50
+  - Same checkpoint format — use after baseline to compare val F1 head-to-head
+
+### Files changed
+- `training/audit.py`
+- `training/train.py`
+- `app.py`
+- `model/efficientnet.py` (new)
+- `TASKS.md`
+- `DONE.md`
+
+### Major decisions
+- Val F1 is now the checkpoint selection criterion: for binary classification under
+  potential imbalance, F1 is more informative than accuracy (accuracy can be high even
+  when the minority class is ignored).
+- Early stopping patience=3 is conservative enough to allow the scheduler to take effect
+  (LR halves at epoch 3, 6, 9) without letting training continue indefinitely.
+- Mixed precision is opt-in at the device level (auto-enabled on CUDA, silent on CPU).
+- EfficientNet-B4 is provided as a separate file rather than replacing ResNet-50, so
+  the baseline result remains reproducible.
+
+### Limitations
+- No augmentation pipeline yet — all images are resized to 256×256 and FFT-transformed
+  with no stochastic transforms (flip, crop, colour jitter). This may hurt generalisation.
+- EfficientNet-B4 has not been trained or benchmarked yet; it is ready to run.
+- The app session history is not persisted across browser reloads.

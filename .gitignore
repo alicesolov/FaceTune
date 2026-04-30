@@ -1,3 +1,15 @@
 __pycache__/
 *.pyc
 *.egg-info/
+
+# Model checkpoints (large binaries — track separately)
+model/*.pth
+
+# Claude Code memory (local only)
+.claude/
+
+# HuggingFace cache
+.cache/
+
+# OS
+.DS_Store

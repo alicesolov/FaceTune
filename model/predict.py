@@ -14,12 +14,17 @@ import torch.nn.functional as F
 from PIL import Image
 
 from model.resnet import create_resnet50_binary_classifier, load_binary_classifier_weights
+from preprocessing.content_check import ContentCheckResult, check_content_type
 from preprocessing.fft_transform import fft_preprocess
 
 
 DEFAULT_WEIGHTS_PATH = Path("model/model.pth")
-DEFAULT_UNCERTAIN_LOWER = 0.45
-DEFAULT_UNCERTAIN_UPPER = 0.55
+# Thresholds calibrated for ~5% production AI prevalence (editorial flow).
+# The model is trained on 83% AI data, so raw P(AI) is inflated; these wider
+# thresholds correct for that bias. Run `python -m training.calibrate` after
+# training to get empirically tuned values for your actual deployment prevalence.
+DEFAULT_UNCERTAIN_LOWER = 0.30
+DEFAULT_UNCERTAIN_UPPER = 0.80
 
 
 @dataclass(frozen=True)
@@ -30,17 +35,20 @@ class PredictionResult:
     Keep verdicts, confidence values, and explanatory notes in one object.
 
     Inputs:
-    - verdict: Project verdict label.
+    - verdict: Project verdict label: real | ai_generated | uncertain | unsupported.
     - confidence: Confidence score for the returned verdict.
     - probabilities: Mapping of class labels to probabilities when available.
     - note: Editor-facing explanation or limitation note.
     - used_placeholder: Whether the output came from placeholder logic.
+    - content_check: Content type screening result; None when check was skipped.
 
     Outputs:
     - Immutable prediction result.
 
     Key assumptions:
     - Confidence values are in the range `[0, 1]`.
+    - verdict="unsupported" means content type screening rejected the image
+      before the model ran; probabilities will be empty in that case.
 
     Failure modes:
     - None in normal construction.
@@ -51,6 +59,7 @@ class PredictionResult:
     probabilities: dict[str, float]
     note: str
     used_placeholder: bool
+    content_check: ContentCheckResult | None = None
 
 
 class Predictor:
@@ -189,6 +198,18 @@ class Predictor:
         - Propagates preprocessing errors if the upload is not a valid image.
         """
 
+        # ── Content type gate ─────────────────────────────────────────────
+        content = check_content_type(image)
+        if not content.is_supported:
+            return PredictionResult(
+                verdict="unsupported",
+                confidence=0.0,
+                probabilities={},
+                note=content.note,
+                used_placeholder=False,
+                content_check=content,
+            )
+
         model_input = self.preprocess(image)
 
         if self.model is None:
@@ -198,6 +219,7 @@ class Predictor:
                 probabilities={"real": 0.0, "ai_generated": 0.0},
                 note=self.model_status_note,
                 used_placeholder=True,
+                content_check=content,
             )
 
         with torch.inference_mode():
@@ -218,6 +240,7 @@ class Predictor:
             },
             note=self.model_status_note,
             used_placeholder=False,
+            content_check=content,
         )
 
 

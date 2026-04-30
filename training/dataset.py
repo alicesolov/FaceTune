@@ -1,8 +1,8 @@
-"""Dataset loading helpers for the planned Hugging Face dataset.
+"""Dataset loading helpers and PyTorch Dataset wrapper for the Defactify dataset.
 
-This module provides a small, reproducible foundation for loading the
-`Rajarshi-Roy-research/Defactify_Image_Dataset` splits without implementing
-training yet.
+This module provides reproducible loading of the
+`Rajarshi-Roy-research/Defactify_Image_Dataset` splits and a PyTorch-compatible
+Dataset class that applies the project FFT preprocessing pipeline.
 """
 
 from __future__ import annotations
@@ -10,11 +10,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import torch
+from torch.utils.data import Dataset as TorchDataset
+
 try:
     from datasets import Dataset, load_dataset
 except ImportError:  # pragma: no cover - depends on optional dependency.
     Dataset = Any  # type: ignore[misc,assignment]
     load_dataset = None
+
+from preprocessing.fft_transform import fft_preprocess
 
 
 DEFAULT_DATASET_ID = "Rajarshi-Roy-research/Defactify_Image_Dataset"
@@ -168,3 +173,62 @@ def summarize_split(dataset: Dataset) -> dict[str, Any]:
         "num_rows": len(dataset),
         "columns": list(dataset.column_names),
     }
+
+
+class DefactifyTorchDataset(TorchDataset):
+    """PyTorch Dataset wrapper around a loaded Defactify HuggingFace split.
+
+    Purpose:
+    Bridge the Hugging Face dataset API with PyTorch DataLoader by applying
+    the project FFT preprocessing pipeline to each image on access.
+
+    Inputs:
+    - hf_dataset: A loaded Hugging Face `Dataset` split with the expected
+      `Image` and `Label_A` columns.
+
+    Outputs:
+    - (tensor, label) tuples where tensor is shape `(3, 256, 256)` float32
+      and label is an int (0 = real, 1 = ai_generated).
+
+    Key assumptions:
+    - The `Image` column contains PIL images (decoded by Hugging Face).
+    - `Label_A` values are 0 or 1 as documented.
+
+    Failure modes:
+    - Propagates FFT preprocessing errors for malformed images.
+    - Raises `KeyError` if required columns are missing.
+    """
+
+    def __init__(self, hf_dataset: Dataset) -> None:
+        self.dataset = hf_dataset
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
+        item = self.dataset[idx]
+        image = item["Image"]
+        label = int(item["Label_A"])
+        tensor = fft_preprocess(image)
+        return tensor, label
+
+    def get_all_labels(self) -> list[int]:
+        """Return all Label_A values as a flat list for sampler construction.
+
+        Purpose:
+        Allow the training script to build a class-balanced sampler without
+        iterating through the full dataset via __getitem__.
+
+        Inputs:
+        - None.
+
+        Outputs:
+        - List of integer labels in dataset order.
+
+        Key assumptions:
+        - `Label_A` is present and integer-valued.
+
+        Failure modes:
+        - Propagates errors from the underlying dataset if schema is unexpected.
+        """
+        return [int(item["Label_A"]) for item in self.dataset]
