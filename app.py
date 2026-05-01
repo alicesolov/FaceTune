@@ -1,7 +1,7 @@
 """Streamlit app for editorial image authenticity screening.
 
-Supports image upload, FFT preprocessing, ResNet-50 inference (when a trained
-checkpoint is available), and diagnostic tabs for the newsroom workflow.
+Supports image upload, FFT preprocessing, and neural network inference (when a
+trained checkpoint is available), with diagnostic tabs for the newsroom workflow.
 """
 
 from __future__ import annotations
@@ -446,7 +446,7 @@ def main() -> None:
         st.markdown(
             "Use the sidebar to upload a natural photograph (press photo, reportage). "
             "The tool screens for AI-generation artefacts using "
-            "frequency analysis (FFT) and a ResNet-50 classifier."
+            "frequency analysis (FFT) and a neural network classifier."
         )
 
         st.divider()

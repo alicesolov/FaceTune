@@ -106,7 +106,7 @@ def diagnose(
     true_negatives_count = 0
 
     logging.info("Running inference on real images …")
-    for idx in real_indices:
+    for i, idx in enumerate(real_indices):
         item = hf_ds[idx]
         image = item["Image"]
         caption = str(item.get("Caption", ""))
@@ -135,10 +135,10 @@ def diagnose(
         else:
             true_negatives_count += 1
 
-        if (real_indices.index(idx) + 1) % 500 == 0:
+        if (i + 1) % 500 == 0:
             logging.info(
                 "  %d / %d  FP so far: %d",
-                real_indices.index(idx) + 1, len(real_indices), len(false_positives),
+                i + 1, len(real_indices), len(false_positives),
             )
 
     fpr = len(false_positives) / len(real_indices) if real_indices else 0.0
