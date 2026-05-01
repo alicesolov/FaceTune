@@ -206,6 +206,10 @@ if __name__ == "__main__":
     parser.add_argument("--top-n", type=int, default=DEFAULT_TOP_N,
                         help=f"Top-N false positives to report (default: {DEFAULT_TOP_N})")
     parser.add_argument("--cache-dir", default=None)
+    parser.add_argument(
+        "--save-json", default=None, metavar="PATH",
+        help="Save the full result (including FP index list) to this JSON file.",
+    )
     args = parser.parse_args()
 
     result = diagnose(
@@ -214,7 +218,14 @@ if __name__ == "__main__":
         top_n=args.top_n,
         cache_dir=args.cache_dir,
     )
-    # Print summary without the full FP list unless redirected
+    # Print summary (without the full FP list) to stdout.
     summary = {k: v for k, v in result.items() if not k.startswith("top_")}
     print(json.dumps(summary, indent=2))
-    print(f"\n(Top-{args.top_n} FP list omitted from stdout — use > file.json to save)")
+
+    if args.save_json:
+        save_path = Path(args.save_json)
+        with save_path.open("w") as f:
+            json.dump(result, f, indent=2)
+        print(f"\nFull result (including FP list) saved to: {save_path}")
+    else:
+        print(f"\n(FP index list not saved — re-run with --save-json fp.json to use in finetune_hard_negatives)")
