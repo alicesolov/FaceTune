@@ -14,15 +14,28 @@ import streamlit as st
 import torch
 from PIL import Image, UnidentifiedImageError
 
-from model.predict import DEFAULT_WEIGHTS_PATH, Predictor, PredictionResult
+from model.predict import DEFAULT_WEIGHTS_PATH, MODES, Predictor, PredictionResult
 from preprocessing.fft_transform import fft_preprocess
 from preprocessing.visualizations import compute_power_spectrum_stats, render_fft_colormap
 
 
 SUPPORTED_FORMATS = ("png", "jpg", "jpeg", "webp")
 MAX_UPLOAD_MB = 10
-LOWER_THRESHOLD = 0.30
-UPPER_THRESHOLD = 0.80
+
+MODE_LABELS = {
+    "screening": "Screening  (high recall — first-pass filter)",
+    "confirm":   "Confirm    (high precision — final decision)",
+}
+MODE_HELP = {
+    "screening": (
+        "Threshold 0.50 — catches ~92 % of AI images but also flags ~60 % of "
+        "real photos. Use as a first-pass filter; all flagged images need review."
+    ),
+    "confirm": (
+        "Threshold 0.95 — when the tool says AI, it is almost certainly right (~95 % "
+        "precision). Recall drops to ~50 %. Use for a final publication gate."
+    ),
+}
 
 VERDICT_LABEL = {
     "real": "Likely a real photograph",
@@ -117,37 +130,34 @@ def load_uploaded_image(uploaded_file) -> Image.Image:
 
 # ── Visualizations ────────────────────────────────────────────────────────────
 
-def render_probability_gauge(ai_prob: float) -> plt.Figure:
+def render_probability_gauge(ai_prob: float, lower: float, upper: float) -> plt.Figure:
     """Horizontal gauge showing AI-generated probability with zone coloring."""
     fig, ax = plt.subplots(figsize=(6, 0.9))
     fig.patch.set_alpha(0.0)
     ax.patch.set_alpha(0.0)
 
-    ax.barh(0, LOWER_THRESHOLD, color="#2ecc71", height=0.55, alpha=0.85)
-    ax.barh(0, UPPER_THRESHOLD - LOWER_THRESHOLD,
-            left=LOWER_THRESHOLD, color="#f39c12", height=0.55, alpha=0.85)
-    ax.barh(0, 1.0 - UPPER_THRESHOLD,
-            left=UPPER_THRESHOLD, color="#e74c3c", height=0.55, alpha=0.85)
+    ax.barh(0, lower, color="#2ecc71", height=0.55, alpha=0.85)
+    ax.barh(0, upper - lower, left=lower, color="#f39c12", height=0.55, alpha=0.85)
+    ax.barh(0, 1.0 - upper, left=upper, color="#e74c3c", height=0.55, alpha=0.85)
 
-    for xv in (LOWER_THRESHOLD, UPPER_THRESHOLD):
+    for xv in (lower, upper):
         ax.axvline(xv, color="#222", linewidth=1.2, linestyle="--", alpha=0.6)
 
     ax.plot([ai_prob], [0], marker="v", markersize=13,
             color="white", markeredgecolor="#111", markeredgewidth=1.8, zorder=10)
 
-    ax.text(LOWER_THRESHOLD / 2, 0.38, "REAL",
+    ax.text(lower / 2, 0.38, "REAL",
             ha="center", va="bottom", fontsize=7.5, fontweight="bold", color="white")
-    ax.text((LOWER_THRESHOLD + UPPER_THRESHOLD) / 2, 0.38, "?",
+    ax.text((lower + upper) / 2, 0.38, "?",
             ha="center", va="bottom", fontsize=7.5, fontweight="bold", color="white")
-    ax.text((UPPER_THRESHOLD + 1.0) / 2, 0.38, "AI",
+    ax.text((upper + 1.0) / 2, 0.38, "AI",
             ha="center", va="bottom", fontsize=7.5, fontweight="bold", color="white")
 
     ax.set_xlim(-0.01, 1.01)
     ax.set_ylim(-0.55, 0.75)
     ax.set_yticks([])
-    ax.set_xticks([0.0, LOWER_THRESHOLD, UPPER_THRESHOLD, 1.0])
-    ax.set_xticklabels(["0%", f"{LOWER_THRESHOLD:.0%}", f"{UPPER_THRESHOLD:.0%}", "100%"],
-                       fontsize=8.5)
+    ax.set_xticks([0.0, lower, upper, 1.0])
+    ax.set_xticklabels(["0%", f"{lower:.0%}", f"{upper:.0%}", "100%"], fontsize=8.5)
     ax.set_xlabel("AI-generated probability", fontsize=8.5, labelpad=3)
     for spine in ("top", "right", "left"):
         ax.spines[spine].set_visible(False)
@@ -193,7 +203,8 @@ def render_session_history() -> None:
 
 # ── Tab renderers ─────────────────────────────────────────────────────────────
 
-def render_prediction_tab(image: Image.Image, result: PredictionResult) -> None:
+def render_prediction_tab(image: Image.Image, result: PredictionResult,
+                          mode: str = "screening") -> None:
     col_img, col_verdict = st.columns([1, 1], gap="large")
 
     with col_img:
@@ -230,7 +241,9 @@ def render_prediction_tab(image: Image.Image, result: PredictionResult) -> None:
             c1.metric("Real", f"{real_prob:.1%}")
             c2.metric("AI-generated", f"{ai_prob:.1%}")
 
-            st.pyplot(render_probability_gauge(ai_prob), use_container_width=True)
+            lower, upper = MODES[mode]
+            st.pyplot(render_probability_gauge(ai_prob, lower, upper),
+                      use_container_width=True)
 
     st.divider()
     guidance = EDITORIAL_GUIDANCE.get(result.verdict, "")
@@ -282,7 +295,8 @@ def render_fft_tab(image: Image.Image) -> None:
                        "AI images sometimes show unusually high ratios.")
 
 
-def render_diagnostics_tab(result: PredictionResult, predictor: Predictor) -> None:
+def render_diagnostics_tab(result: PredictionResult, predictor: Predictor,
+                           mode: str = "screening") -> None:
     # ── Model status ──────────────────────────────────────────────────────
     st.subheader("Model status")
 
@@ -347,17 +361,19 @@ def render_diagnostics_tab(result: PredictionResult, predictor: Predictor) -> No
         col1.metric("Real", f"{probs.get('real', 0.0):.1%}")
         col2.metric("AI-generated", f"{ai_prob:.1%}")
 
-        st.pyplot(render_probability_gauge(ai_prob), use_container_width=True)
+        lower, upper = MODES[mode]
+        st.pyplot(render_probability_gauge(ai_prob, lower, upper), use_container_width=True)
 
         st.divider()
         st.subheader("Threshold policy")
         st.markdown(
             f"| Zone | AI-generated probability | Verdict |\n"
             f"|---|---|---|\n"
-            f"| 🟢 Real | < {LOWER_THRESHOLD:.0%} | `real` |\n"
-            f"| 🟡 Uncertain | {LOWER_THRESHOLD:.0%} – {UPPER_THRESHOLD:.0%} | `uncertain` |\n"
-            f"| 🔴 AI-generated | > {UPPER_THRESHOLD:.0%} | `ai_generated` |\n\n"
-            f"Current AI probability: **{ai_prob:.1%}** → verdict: **`{result.verdict}`**"
+            f"| 🟢 Real | < {lower:.0%} | `real` |\n"
+            f"| 🟡 Uncertain | {lower:.0%} – {upper:.0%} | `uncertain` |\n"
+            f"| 🔴 AI-generated | > {upper:.0%} | `ai_generated` |\n\n"
+            f"Current AI probability: **{ai_prob:.1%}** → verdict: **`{result.verdict}`**\n\n"
+            f"Mode: **{mode}** — {MODE_HELP[mode]}"
         )
 
 
@@ -391,6 +407,19 @@ def main() -> None:
                     f"Checkpoint: epoch {meta['epoch']}  "
                     f"val F1 {meta['val_f1']:.3f}"
                 )
+
+        st.divider()
+
+        mode = st.radio(
+            "Operating mode",
+            options=list(MODE_LABELS.keys()),
+            format_func=lambda m: MODE_LABELS[m],
+            help=(
+                "**Screening** — first-pass filter, high recall. "
+                "**Confirm** — final decision, high precision."
+            ),
+        )
+        st.caption(MODE_HELP[mode])
 
         st.divider()
 
@@ -464,7 +493,7 @@ def main() -> None:
 
     # ── Inference ─────────────────────────────────────────────────────────
     try:
-        result = predictor.predict(image)
+        result = predictor.predict(image, mode=mode)
     except Exception as error:  # pragma: no cover
         st.error(f"Inference failed: {error}")
         return
@@ -475,13 +504,13 @@ def main() -> None:
     tab1, tab2, tab3 = st.tabs(["Prediction", "FFT Spectrum", "Diagnostics"])
 
     with tab1:
-        render_prediction_tab(image, result)
+        render_prediction_tab(image, result, mode=mode)
 
     with tab2:
         render_fft_tab(image)
 
     with tab3:
-        render_diagnostics_tab(result, predictor)
+        render_diagnostics_tab(result, predictor, mode=mode)
 
 
 if __name__ == "__main__":

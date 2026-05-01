@@ -19,12 +19,29 @@ from preprocessing.fft_transform import fft_preprocess
 
 
 DEFAULT_WEIGHTS_PATH = Path("model/model.pth")
-# Thresholds calibrated for ~5% production AI prevalence (editorial flow).
-# The model is trained on 83% AI data, so raw P(AI) is inflated; these wider
-# thresholds correct for that bias. Run `python -m training.calibrate` after
-# training to get empirically tuned values for your actual deployment prevalence.
-DEFAULT_UNCERTAIN_LOWER = 0.30
-DEFAULT_UNCERTAIN_UPPER = 0.80
+
+# ── Operating modes ───────────────────────────────────────────────────────────
+# Two modes balance precision vs recall for different editorial contexts.
+#
+# SCREENING — first-pass filter, maximise recall (catch as many AI as possible).
+#   Threshold 0.50: recall ~92%, but FPR ~59% on real photos at 5% prevalence.
+#   Verdict "AI" means "needs review", not "definitely AI".
+#
+# CONFIRM — high-precision final decision, minimise false alarms.
+#   Threshold 0.95: precision ~95%, recall ~50%. When the tool says "AI" here,
+#   it is almost certainly right. Use for final publication gate.
+#
+# Both modes use the same uncertain zone lower bound (0.30).
+
+MODES: dict[str, tuple[float, float]] = {
+    "screening": (0.30, 0.50),   # broad uncertain zone, high recall
+    "confirm":   (0.30, 0.95),   # very wide uncertain zone, high precision
+}
+DEFAULT_MODE = "screening"
+
+# Back-compat aliases used directly in app.py gauge rendering
+DEFAULT_UNCERTAIN_LOWER = MODES[DEFAULT_MODE][0]
+DEFAULT_UNCERTAIN_UPPER = MODES[DEFAULT_MODE][1]
 
 
 @dataclass(frozen=True)
@@ -176,7 +193,7 @@ class Predictor:
         tensor = fft_preprocess(image).unsqueeze(0)
         return tensor.to(self.device)
 
-    def predict(self, image: Image.Image) -> PredictionResult:
+    def predict(self, image: Image.Image, mode: str = DEFAULT_MODE) -> PredictionResult:
         """Generate a safe prediction result for one uploaded image.
 
         Purpose:
@@ -229,7 +246,9 @@ class Predictor:
 
         real_probability = float(probabilities_tensor[0].item())
         ai_generated_probability = float(probabilities_tensor[1].item())
-        verdict = map_binary_probability_to_verdict(ai_generated_probability)
+
+        lower, upper = MODES.get(mode, MODES[DEFAULT_MODE])
+        verdict = map_binary_probability_to_verdict(ai_generated_probability, lower, upper)
         confidence = max(real_probability, ai_generated_probability)
 
         return PredictionResult(
