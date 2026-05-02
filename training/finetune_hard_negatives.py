@@ -161,6 +161,7 @@ def finetune(
     lr: float = DEFAULT_FINETUNE_LR,
     batch_size: int = DEFAULT_BATCH_SIZE,
     hard_neg_weight: float = DEFAULT_HARD_NEG_WEIGHT,
+    checkpoint_by: str = "f1",
     device_str: str = "auto",
     cache_dir: str | None = None,
     patience: int = EARLY_STOPPING_PATIENCE,
@@ -180,6 +181,9 @@ def finetune(
     - epochs: Maximum fine-tuning epochs (3-5 recommended).
     - lr: Learning rate — 10x lower than full training (default 1e-5).
     - hard_neg_weight: Per-sample multiplier for hard negatives vs. normal Real.
+    - checkpoint_by: Metric used to select the best checkpoint: 'f1' (default)
+      or 'fpr' (saves the epoch with the lowest false positive rate on real photos).
+      Use 'fpr' when minimising false positives is the primary goal.
 
     Note:
     The monitoring split is automatically chosen as the opposite of fp_split
@@ -187,7 +191,7 @@ def finetune(
     hard negatives never appear in the split used to track FPR during training.
 
     Outputs:
-    - Fine-tuned checkpoint saved at output_path (best validation F1).
+    - Fine-tuned checkpoint saved at output_path, selected by checkpoint_by metric.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -246,6 +250,9 @@ def finetune(
         len(combined_ds), len(train_ds), len(hard_neg_ds), len(val_ds),
     )
 
+    if checkpoint_by not in ("f1", "fpr"):
+        raise ValueError(f"--checkpoint-by must be 'f1' or 'fpr', got '{checkpoint_by}'")
+
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     use_amp = device.type == "cuda"
@@ -253,6 +260,7 @@ def finetune(
     stopper = EarlyStopping(patience=patience)
 
     best_val_f1 = 0.0
+    best_val_fpr = float("inf")
 
     for epoch in range(1, epochs + 1):
         t0 = time.time()
@@ -274,18 +282,29 @@ def finetune(
             val_m["recall"], val_m["f1"], fpr * 100, elapsed,
         )
 
-        if val_m["f1"] > best_val_f1:
-            best_val_f1 = val_m["f1"]
-            save_checkpoint(model, epoch, val_m, output_path)
+        if checkpoint_by == "fpr":
+            if fpr < best_val_fpr - 1e-4:
+                best_val_fpr = fpr
+                save_checkpoint(model, epoch, val_m, output_path)
+            stopper.step(-fpr)  # negate: lower FPR = higher "score" for EarlyStopping
+        else:
+            if val_m["f1"] > best_val_f1:
+                best_val_f1 = val_m["f1"]
+                save_checkpoint(model, epoch, val_m, output_path)
+            stopper.step(val_m["f1"])
 
-        stopper.step(val_m["f1"])
         if stopper.should_stop:
             logging.info("Early stopping at epoch %d.", epoch)
             break
 
-    logging.info(
-        "Fine-tuning complete.  Best val F1: %.4f  →  %s", best_val_f1, output_path
-    )
+    if checkpoint_by == "fpr":
+        logging.info(
+            "Fine-tuning complete.  Best val FPR: %.1f%%  →  %s", best_val_fpr * 100, output_path
+        )
+    else:
+        logging.info(
+            "Fine-tuning complete.  Best val F1: %.4f  →  %s", best_val_f1, output_path
+        )
     logging.info(
         "Monitored on '%s' split during training.  "
         "Run: python -m training.evaluate --split test --weights-path %s",
@@ -324,6 +343,10 @@ if __name__ == "__main__":
         "--hard-neg-weight", type=float, default=DEFAULT_HARD_NEG_WEIGHT,
         help=f"Sample weight multiplier for hard negatives (default: {DEFAULT_HARD_NEG_WEIGHT})",
     )
+    parser.add_argument(
+        "--checkpoint-by", default="f1", choices=["f1", "fpr"],
+        help="Metric for checkpoint selection: 'f1' (default) or 'fpr' (minimise false positive rate)",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--cache-dir", default=None)
     parser.add_argument("--patience", type=int, default=EARLY_STOPPING_PATIENCE)
@@ -338,6 +361,7 @@ if __name__ == "__main__":
         lr=args.lr,
         batch_size=args.batch_size,
         hard_neg_weight=args.hard_neg_weight,
+        checkpoint_by=args.checkpoint_by,
         device_str=args.device,
         cache_dir=args.cache_dir,
         patience=args.patience,
