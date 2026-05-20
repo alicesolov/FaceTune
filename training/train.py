@@ -34,12 +34,12 @@ DEFAULT_WEIGHTS_PATH = Path("model/model.pth")
 RANDOM_SEED = 42
 EARLY_STOPPING_PATIENCE = 3
 EARLY_STOPPING_MIN_DELTA = 1e-4
-SUPPORTED_MODELS = ("resnet50", "mobilenet")  # mobilenet is ~5× faster on CPU
+SUPPORTED_MODELS = ("resnet50", "mobilenet", "hybrid")  # hybrid = FFT+CLIP
 
 
 # ── Metrics ───────────────────────────────────────────────────────────────────
 
-def compute_metrics(preds: list[int], labels: list[int]) -> dict[str, float]:
+def compute_metrics(preds: list[int], labels: list[int], generator_labels: list[int] | None = None) -> dict[str, float]:
     """Compute accuracy, precision, recall, and F1 from flat label lists.
 
     Purpose:
@@ -66,6 +66,7 @@ def compute_metrics(preds: list[int], labels: list[int]) -> dict[str, float]:
     tp = sum(p == 1 and l == 1 for p, l in zip(preds, labels))
     fp = sum(p == 1 and l == 0 for p, l in zip(preds, labels))
     fn = sum(p == 0 and l == 1 for p, l in zip(preds, labels))
+    tn = sum(p == 0 and l == 0 for p, l in zip(preds, labels))
     correct = sum(p == l for p, l in zip(preds, labels))
 
     accuracy = correct / len(labels)
@@ -76,8 +77,16 @@ def compute_metrics(preds: list[int], labels: list[int]) -> dict[str, float]:
         if (precision + recall) > 0
         else 0.0
     )
+    # FPR = FP / (FP + TN) — fraction of real images misclassified as AI
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
 
-    return {"accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1}
+    return {
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
+        "fpr": fpr,
+    }
 
 
 # ── Sampler ───────────────────────────────────────────────────────────────────
@@ -301,28 +310,107 @@ def save_checkpoint(
             "epoch": epoch,
             "model_name": getattr(model, "_train_model_name", "resnet50"),
             "state_dict": model.state_dict(),
-            "val_accuracy": val_metrics["accuracy"],
-            "val_precision": val_metrics["precision"],
-            "val_recall": val_metrics["recall"],
-            "val_f1": val_metrics["f1"],
+            "val_accuracy": val_metrics.get("accuracy", 0.0),
+            "val_precision": val_metrics.get("precision", 0.0),
+            "val_recall": val_metrics.get("recall", 0.0),
+            "val_f1": val_metrics.get("f1", 0.0),
+            "val_fpr": val_metrics.get("fpr", 1.0),
         },
         path,
     )
     logging.info(
-        "  ✓ Saved checkpoint → %s  (acc=%.4f  f1=%.4f)",
+        "  ✓ Saved checkpoint → %s  (f1=%.4f  fpr=%.4f)",
         path,
-        val_metrics["accuracy"],
-        val_metrics["f1"],
+        val_metrics.get("f1", 0.0),
+        val_metrics.get("fpr", 1.0),
     )
+
+
+# ── Hybrid epoch loops ────────────────────────────────────────────────────────
+
+def train_one_epoch_hybrid(
+    model: nn.Module,
+    loader: "DataLoader",
+    optimizer: "torch.optim.Optimizer",
+    criterion: nn.Module,
+    device: torch.device,
+    scaler=None,
+    log_every: int = 100,
+) -> tuple[float, dict[str, float]]:
+    """Training epoch for HybridDetector — batch is (fft, clip_pv, label)."""
+    model.train()
+    running_loss = 0.0
+    all_preds: list[int] = []
+    all_labels: list[int] = []
+    use_amp = scaler is not None and device.type == "cuda"
+
+    for step, batch in enumerate(loader):
+        fft_inputs, clip_inputs, labels = batch
+        fft_inputs = fft_inputs.to(device)
+        clip_inputs = clip_inputs.to(device)
+        labels = labels.to(device)
+
+        optimizer.zero_grad()
+        if use_amp:
+            with torch.cuda.amp.autocast():
+                logits = model(fft_inputs, clip_inputs)
+                loss = criterion(logits, labels)
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            logits = model(fft_inputs, clip_inputs)
+            loss = criterion(logits, labels)
+            loss.backward()
+            optimizer.step()
+
+        running_loss += loss.item()
+        all_preds.extend(logits.detach().argmax(dim=1).cpu().tolist())
+        all_labels.extend(labels.cpu().tolist())
+
+        if (step + 1) % log_every == 0:
+            logging.info("  step %d/%d  loss=%.4f", step + 1, len(loader),
+                         running_loss / (step + 1))
+
+    return running_loss / len(loader), compute_metrics(all_preds, all_labels)
+
+
+def validate_hybrid(
+    model: nn.Module,
+    loader: "DataLoader",
+    criterion: nn.Module,
+    device: torch.device,
+) -> tuple[float, dict[str, float]]:
+    """Validation pass for HybridDetector — batch is (fft, clip_pv, label)."""
+    model.eval()
+    running_loss = 0.0
+    all_preds: list[int] = []
+    all_labels: list[int] = []
+
+    with torch.inference_mode():
+        for fft_inputs, clip_inputs, labels in loader:
+            fft_inputs = fft_inputs.to(device)
+            clip_inputs = clip_inputs.to(device)
+            labels = labels.to(device)
+            logits = model(fft_inputs, clip_inputs)
+            loss = criterion(logits, labels)
+            running_loss += loss.item()
+            all_preds.extend(logits.argmax(dim=1).cpu().tolist())
+            all_labels.extend(labels.cpu().tolist())
+
+    return running_loss / len(loader), compute_metrics(all_preds, all_labels)
 
 
 # ── Model factory ────────────────────────────────────────────────────────────
 
 def _build_model(model_name: str, pretrained: bool) -> nn.Module:
-    """Instantiate a classifier by name.
-
-    Supported names: 'resnet50' (default baseline), 'mobilenet' (fast CPU option).
-    """
+    """Instantiate a classifier by name."""
+    if model_name == "hybrid":
+        from model.hybrid import HybridDetector
+        logging.info("Building HybridDetector (FFT+CLIP) …")
+        model = HybridDetector()
+        model._train_model_name = "hybrid"
+        return model
     if model_name == "mobilenet":
         logging.info("Building MobileNetV3-Large (pretrained=%s) …", pretrained)
         return create_mobilenet_v3_classifier(pretrained=pretrained)
@@ -343,6 +431,9 @@ def train(
     patience: int = EARLY_STOPPING_PATIENCE,
     model_name: str = "resnet50",
     max_samples: int | None = None,
+    checkpoint_by: str = "f1",
+    run_name: str | None = None,
+    drive_dir: str | None = None,
 ) -> None:
     """Run the full training loop and save the best checkpoint.
 
@@ -383,6 +474,23 @@ def train(
         datefmt="%H:%M:%S",
     )
 
+    # ── Experiment logger ──────────────────────────────────────────────────
+    exp_logger = None
+    if run_name:
+        from training.experiment_logger import ExperimentLogger
+        exp_logger = ExperimentLogger(run_name, drive_dir=drive_dir)
+        exp_logger.save_config({
+            "model": model_name,
+            "epochs": epochs,
+            "batch_size": batch_size,
+            "lr": lr,
+            "checkpoint_by": checkpoint_by,
+            "patience": patience,
+        })
+        if weights_path == DEFAULT_WEIGHTS_PATH:
+            weights_path = exp_logger.checkpoint_path
+        logging.info("Experiment: %s  →  %s", run_name, exp_logger.exp_dir)
+
     torch.manual_seed(RANDOM_SEED)
 
     # ── Device ────────────────────────────────────────────────────────────
@@ -406,8 +514,20 @@ def train(
     val_hf = load_defactify_split(DatasetConfig(split="validation", cache_dir=cache_dir))
     logging.info("  %d rows", len(val_hf))
 
-    train_ds = DefactifyTorchDataset(train_hf)
-    val_ds = DefactifyTorchDataset(val_hf)
+    is_hybrid = model_name == "hybrid"
+
+    if is_hybrid:
+        from datasets.hard_negatives import DefactifyHybridDataset, make_weighted_sampler_hybrid
+        try:
+            from transformers import CLIPImageProcessor
+            clip_proc = CLIPImageProcessor.from_pretrained("openai/clip-vit-base-patch32")
+        except ImportError:
+            raise ImportError("pip install transformers  ← required for hybrid model")
+        train_ds = DefactifyHybridDataset(train_hf, clip_proc)
+        val_ds = DefactifyHybridDataset(val_hf, clip_proc)
+    else:
+        train_ds = DefactifyTorchDataset(train_hf)
+        val_ds = DefactifyTorchDataset(val_hf)
 
     train_labels = train_ds.get_all_labels()
 
@@ -450,34 +570,55 @@ def train(
     stopper = EarlyStopping(patience=patience)
 
     best_val_f1 = 0.0
+    best_val_fpr = 1.0
+    checkpoint_by = checkpoint_by.lower()
+
+    _train_epoch = train_one_epoch_hybrid if is_hybrid else train_one_epoch
+    _validate = validate_hybrid if is_hybrid else validate
 
     # ── Training loop ─────────────────────────────────────────────────────
     for epoch in range(1, epochs + 1):
         t0 = time.time()
         logging.info("── Epoch %d / %d ────────────────────────────────", epoch, epochs)
 
-        train_loss, train_m = train_one_epoch(
+        train_loss, train_m = _train_epoch(
             model, train_loader, optimizer, criterion, device, scaler=scaler
         )
-        val_loss, val_m = validate(model, val_loader, criterion, device)
+        val_loss, val_m = _validate(model, val_loader, criterion, device)
         scheduler.step()
 
         elapsed = time.time() - t0
         logging.info(
-            "  train  loss=%.4f  acc=%.4f  prec=%.4f  rec=%.4f  f1=%.4f",
-            train_loss, train_m["accuracy"], train_m["precision"],
-            train_m["recall"], train_m["f1"],
+            "  train  loss=%.4f  acc=%.4f  f1=%.4f  fpr=%.4f",
+            train_loss, train_m["accuracy"], train_m["f1"], train_m.get("fpr", 0.0),
         )
         logging.info(
-            "  val    loss=%.4f  acc=%.4f  prec=%.4f  rec=%.4f  f1=%.4f  (%.0fs)",
-            val_loss, val_m["accuracy"], val_m["precision"],
-            val_m["recall"], val_m["f1"], elapsed,
+            "  val    loss=%.4f  acc=%.4f  f1=%.4f  fpr=%.4f  (%.0fs)",
+            val_loss, val_m["accuracy"], val_m["f1"], val_m.get("fpr", 0.0), elapsed,
         )
 
-        if val_m["f1"] > best_val_f1:
-            best_val_f1 = val_m["f1"]
-            save_checkpoint(model, epoch, val_m, weights_path)
-            logging.info("  ↑ New best val F1: %.4f", best_val_f1)
+        if exp_logger:
+            exp_logger.log_epoch(epoch, train_m, val_m,
+                                 extra={"train_loss": train_loss, "val_loss": val_loss})
+
+        # Checkpoint selection
+        improved = False
+        if checkpoint_by == "fpr":
+            val_fpr = val_m.get("fpr", 1.0)
+            if val_fpr < best_val_fpr:
+                best_val_fpr = val_fpr
+                save_checkpoint(model, epoch, val_m, weights_path)
+                logging.info("  ↓ New best FPR: %.4f", best_val_fpr)
+                improved = True
+        else:  # f1
+            if val_m["f1"] > best_val_f1:
+                best_val_f1 = val_m["f1"]
+                save_checkpoint(model, epoch, val_m, weights_path)
+                logging.info("  ↑ New best val F1: %.4f", best_val_f1)
+                improved = True
+
+        if exp_logger:
+            exp_logger.sync_to_drive()
 
         stopper.step(val_m["f1"])
         if stopper.should_stop:
@@ -487,7 +628,10 @@ def train(
             )
             break
 
-    logging.info("Training complete. Best val F1: %.4f", best_val_f1)
+    logging.info(
+        "Training complete. Best val F1: %.4f  Best val FPR: %.4f",
+        best_val_f1, best_val_fpr,
+    )
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -516,6 +660,14 @@ if __name__ == "__main__":
                         help="Backbone: resnet50 (default) | mobilenet (~5× faster on CPU)")
     parser.add_argument("--max-samples", type=int, default=None,
                         help="Subsample train to N rows for quick iteration (default: all)")
+    parser.add_argument("--checkpoint-by", default="f1",
+                        choices=["f1", "fpr"],
+                        help="Select best checkpoint by val F1 (default) or lowest FPR")
+    parser.add_argument("--run-name", default=None,
+                        help="Experiment name — saves to runs/<name>/ and Drive")
+    parser.add_argument("--drive-dir", default=None,
+                        help="Google Drive base dir for experiment sync "
+                             "(default: /content/drive/MyDrive/facetune_detector_runs)")
     args = parser.parse_args()
 
     train(
@@ -529,4 +681,7 @@ if __name__ == "__main__":
         patience=args.patience,
         model_name=args.model,
         max_samples=args.max_samples,
+        checkpoint_by=args.checkpoint_by,
+        run_name=args.run_name,
+        drive_dir=args.drive_dir,
     )

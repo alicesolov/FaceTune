@@ -1,0 +1,42 @@
+experiment:
+  name: hybrid_v3_sd3fix
+  description: "Hybrid v2 + SD3-targeted hard negatives + heavy augmentation"
+
+model:
+  type: hybrid
+  clip_model: openai/clip-vit-base-patch32
+  freeze_clip: false    # allow CLIP to adapt slightly to spectral patterns
+  freeze_fft: false
+  fusion_hidden: 512
+  dropout: 0.35
+
+training:
+  phase1:
+    epochs: 2
+    lr_fusion: 3.0e-4
+    lr_backbone: 5.0e-6
+    batch_size: 24
+  phase2:
+    epochs: 8
+    lr_fusion: 5.0e-6
+    lr_backbone: 2.0e-6
+    batch_size: 24
+  optimizer: adam
+  scheduler: cosine     # cosine for smoother convergence at low LR
+  scheduler_t_max: 10
+  early_stopping_patience: 5
+  mixed_precision: true
+  gradient_accumulation_steps: 2
+
+data:
+  hard_negatives: true
+  hard_neg_weight: 4.0
+  fp_json: fp.json
+  augmentation: true
+  augmentation_strength: heavy   # double JPEG + resize degradation
+  max_samples: null
+
+checkpoint:
+  by: fpr
+  target_fpr: 0.15               # stop as soon as FPR < 15% with F1 > 0.89
+  drive_dir: /content/drive/MyDrive/facetune_detector_runs

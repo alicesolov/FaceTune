@@ -1,0 +1,40 @@
+experiment:
+  name: hybrid_v1
+  description: "Baseline hybrid FFT+CLIP — frozen backbones, fusion only"
+
+model:
+  type: hybrid
+  clip_model: openai/clip-vit-base-patch32
+  freeze_clip: true
+  freeze_fft: true
+  fusion_hidden: 512
+  dropout: 0.3
+
+training:
+  phase1:
+    epochs: 3
+    lr_fusion: 1.0e-3
+    lr_backbone: 0.0       # backbones frozen
+    batch_size: 32
+  phase2:
+    epochs: 5
+    lr_fusion: 3.0e-5
+    lr_backbone: 3.0e-5    # FFT layer4 unfrozen
+    batch_size: 32
+  optimizer: adam
+  scheduler: step
+  scheduler_step: 3
+  scheduler_gamma: 0.5
+  early_stopping_patience: 3
+  mixed_precision: true
+  gradient_accumulation_steps: 1
+
+data:
+  hard_negatives: false
+  augmentation: false
+  augmentation_strength: medium
+  max_samples: null
+
+checkpoint:
+  by: fpr             # fpr | f1
+  drive_dir: /content/drive/MyDrive/facetune_detector_runs

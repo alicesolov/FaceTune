@@ -29,6 +29,40 @@ from training.dataset import DatasetConfig, load_defactify_split
 DEFAULT_WEIGHTS_PATH = Path("model/model.pth")
 DEFAULT_TOP_N = 50
 
+# ── Scene category keywords ────────────────────────────────────────────────────
+
+SCENE_CATEGORIES: dict[str, list[str]] = {
+    "kitchen": ["kitchen", "cooking", "stove", "oven", "refrigerator",
+                "counter", "sink", "fridge", "microwave", "dish"],
+    "bathroom": ["bathroom", "shower", "toilet", "bathtub", "restroom",
+                 "vanity", "mirror", "basin", "towel"],
+    "birds": ["bird", "eagle", "parrot", "sparrow", "owl", "pigeon",
+              "duck", "goose", "heron", "swan", "hawk", "robin", "crow"],
+    "street": ["street", "road", "sidewalk", "pavement", "avenue",
+               "intersection", "crosswalk", "lane", "highway", "curb"],
+    "transport": ["car", "bus", "truck", "train", "vehicle", "taxi",
+                  "motorcycle", "bicycle", "subway", "airport", "plane"],
+    "indoor": ["room", "living room", "bedroom", "office", "hall",
+               "corridor", "lobby", "interior", "ceiling", "floor"],
+    "bathroom_indoor": ["bath", "lavatory", "washroom"],
+    "sky": ["sky", "cloud", "sunset", "sunrise", "dusk", "dawn",
+            "horizon", "atmosphere", "weather"],
+    "food": ["food", "meal", "dish", "plate", "restaurant", "pizza",
+             "salad", "soup", "cake", "bread", "fruit", "vegetable"],
+    "plants": ["plant", "tree", "flower", "garden", "forest", "leaf",
+               "grass", "park", "bush", "vegetation"],
+}
+
+
+def categorize_caption(caption: str) -> str:
+    """Map a caption to the most specific scene category, or 'other'."""
+    lower = caption.lower()
+    for category, keywords in SCENE_CATEGORIES.items():
+        if any(kw in lower for kw in keywords):
+            # Merge bathroom_indoor back into bathroom for reporting
+            return "bathroom" if category == "bathroom_indoor" else category
+    return "other"
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -180,9 +214,16 @@ def diagnose(
     else:
         prob_buckets = {}
 
+    # Scene category breakdown of false positives
+    scene_counts: Counter = Counter()
+    for fp in false_positives:
+        scene_counts[categorize_caption(fp["caption"])] += 1
+    scene_breakdown = dict(scene_counts.most_common())
+
     logging.info("P(AI) distribution of false positives: %s", prob_buckets)
     logging.info("Top caption words in FP: %s", top_words[:10])
     logging.info("FFT center/edge ratio summary: %s", fft_summary)
+    logging.info("FP scene categories: %s", scene_breakdown)
 
     return {
         "split": split,
@@ -192,6 +233,7 @@ def diagnose(
         "prob_distribution": prob_buckets,
         "fft_center_edge_ratio": fft_summary,
         "top_caption_words": top_words,
+        "scene_category_breakdown": scene_breakdown,
         f"top_{top_n}_false_positives": top_fp,
     }
 
