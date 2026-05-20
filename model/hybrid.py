@@ -1,9 +1,9 @@
 """Hybrid FFT+CLIP binary classifier for AI image detection.
 
 Architecture:
-  - FFT branch:  ResNet-50 backbone (without FC) → 2048-dim embedding
-  - CLIP branch: frozen ViT-B/32 image encoder  →  512-dim embedding
-  - Fusion:      concat(2560) → Linear(512) → ReLU → Dropout → Linear(2)
+  - FFT branch:  ResNet-50 backbone (without FC) -> 2048-dim embedding
+  - CLIP branch: frozen ViT-B/32 image encoder  -> hidden-size embedding
+  - Fusion:      concat(2048 + clip_hidden_size) -> Linear(512) -> ReLU -> Dropout -> Linear(2)
 
 Training phases:
   Phase 1: freeze both backbones, train fusion only  (lr=1e-3, 3 epochs)
@@ -11,6 +11,8 @@ Training phases:
 """
 
 from __future__ import annotations
+
+import logging
 
 import torch
 import torch.nn as nn
@@ -26,7 +28,6 @@ except ImportError as exc:  # pragma: no cover
     raise ImportError("transformers required for HybridDetector (pip install transformers)") from exc
 
 FFT_EMBED_DIM = 2048
-CLIP_EMBED_DIM = 512
 CLIP_MODEL_NAME = "openai/clip-vit-base-patch32"
 
 
@@ -51,8 +52,12 @@ class HybridDetector(nn.Module):
         # ── CLIP branch ────────────────────────────────────────────────────
         self.clip_encoder = CLIPVisionModel.from_pretrained(clip_model_name)
 
+        # CLIPVisionModel.pooler_output uses model hidden size
+        # (for ViT-B/32 this is 768, not 512).
+        self.clip_embed_dim = int(self.clip_encoder.config.hidden_size)
+
         # ── Fusion MLP ────────────────────────────────────────────────────
-        total_dim = FFT_EMBED_DIM + CLIP_EMBED_DIM
+        total_dim = FFT_EMBED_DIM + self.clip_embed_dim
         self.fusion = nn.Sequential(
             nn.Linear(total_dim, fusion_hidden),
             nn.ReLU(inplace=True),
@@ -81,8 +86,8 @@ class HybridDetector(nn.Module):
         fft_feat = self.fft_encoder(fft_tensor).flatten(1)       # (B, 2048)
         clip_feat = self.clip_encoder(
             pixel_values=clip_pixel_values
-        ).pooler_output                                            # (B, 512)
-        x = torch.cat([fft_feat, clip_feat], dim=1)              # (B, 2560)
+        ).pooler_output
+        x = torch.cat([fft_feat, clip_feat], dim=1)
         return self.fusion(x)                                     # (B, 2)
 
     # ── Phase control ─────────────────────────────────────────────────────
@@ -143,8 +148,40 @@ class HybridDetector(nn.Module):
 
 
 def load_hybrid_weights(model: HybridDetector, weights_path: str) -> HybridDetector:
-    """Load a saved hybrid checkpoint into an existing HybridDetector."""
+    """Load a saved hybrid checkpoint into an existing HybridDetector.
+
+    If checkpoint tensors are shape-incompatible with the current model
+    (for example after changing fusion input dimension), incompatible keys
+    are skipped and the model is loaded partially with a warning.
+    """
     checkpoint = torch.load(weights_path, map_location="cpu")
     state_dict = checkpoint.get("state_dict", checkpoint)
-    model.load_state_dict(state_dict)
+
+    model_state = model.state_dict()
+    compatible_state: dict[str, torch.Tensor] = {}
+    skipped_keys: list[str] = []
+
+    for key, value in state_dict.items():
+        if key not in model_state:
+            skipped_keys.append(key)
+            continue
+        if model_state[key].shape != value.shape:
+            skipped_keys.append(
+                f"{key} (ckpt {tuple(value.shape)} != model {tuple(model_state[key].shape)})"
+            )
+            continue
+        compatible_state[key] = value
+
+    missing, unexpected = model.load_state_dict(compatible_state, strict=False)
+
+    if skipped_keys or missing or unexpected:
+        logging.warning(
+            "Hybrid checkpoint loaded partially from '%s'. "
+            "Skipped=%d, missing=%d, unexpected=%d.",
+            weights_path,
+            len(skipped_keys),
+            len(missing),
+            len(unexpected),
+        )
+
     return model
