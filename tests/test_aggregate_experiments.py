@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -68,7 +69,56 @@ def write_experiment(
             "fake_generator_assignment": "balanced_uniform_cycle",
         },
     }
+    model = {
+        "device": "mps",
+        "environment_at_launch": {"git_revision": "training-pipeline-revision"},
+        "manifest": {
+            "resolved_path": "/relocated/project/data/manifest.csv",
+            "manifest_sha256": "manifest-sha256",
+            "row_counts": {"total": 96000, "by_split": {"train": 67200, "val": 14400, "test": 14400}},
+        },
+        "preprocessing": {
+            "protocol": "h1n_square_crop_128_v1",
+            "version": "1.0",
+            "image_size": 128,
+            "train_crop": "seeded_random_square_crop",
+            "eval_crop": "center_square_crop",
+        },
+        "train_sampler": {
+            "choice": "paired_group_balanced_v1",
+            "group_column": "leakage_group",
+            "fake_generator_assignment": "balanced_uniform_cycle",
+        },
+        "launch_options": {
+            "requested": {
+                "representation": representation,
+                "seed": seed,
+                "epochs": 15,
+                "batch_size": 32,
+                "learning_rate": 0.0001,
+                "patience": 4,
+                "preprocessing_protocol": "h1n_square_crop_128_v1",
+                "train_sampler": None,
+                "paired_group_column": "leakage_group",
+                "from_scratch": True,
+                "robust_augmentation": False,
+                "device": "mps",
+            },
+            "resolved": {
+                "train_sampler": "paired_group_balanced_v1",
+                "paired_group_column": "leakage_group",
+                "device": "mps",
+            },
+        },
+        "model": {
+            "architecture": "resnet50",
+            "pretrained": False,
+            "trainable_parameters": 23512130,
+        },
+    }
     (experiment / "run.json").write_text(json.dumps(run), encoding="utf-8")
+    (experiment / "model.json").write_text(json.dumps(model), encoding="utf-8")
+    (experiment / "best_model.pt").write_bytes(f"checkpoint-{representation}-{seed}".encode())
     if write_validation:
         (experiment / "validation_metrics.json").write_text(
             json.dumps(metric_payload(validation_score, validation_roc_auc)), encoding="utf-8"
@@ -163,6 +213,7 @@ def test_multiple_representations_select_by_validation_not_internal_test(
     assert decision["selected_representation"] == "rgb"
     assert decision["representative_seed"] == 17
     assert decision["experiment"] == "rgb_seed17"
+    assert decision["checkpoint_sha256"] == hashlib.sha256(b"checkpoint-rgb-17").hexdigest()
     assert decision["validation_threshold"] == pytest.approx(0.5)
     assert decision["validation_metrics"]["balanced_accuracy"] == pytest.approx(0.8)
     assert set(per_seed_validation["validation_threshold"]) == {0.5}
@@ -311,3 +362,24 @@ def test_aggregate_rejects_duplicate_seed_and_incompatible_signature(tmp_path: P
     (incompatible / "run.json").write_text(json.dumps(run), encoding="utf-8")
     with pytest.raises(SystemExit, match="incompatible controlled-protocol"):
         run_aggregate(monkeypatch, tmp_path / "signature_aggregate", compatible, incompatible)
+
+
+def test_aggregate_rejects_mismatched_model_launch_contract(tmp_path: Path, monkeypatch) -> None:
+    first = write_experiment(tmp_path, "rgb", 7, internal_score=0.7, validation_score=0.7)
+    second = write_experiment(tmp_path, "rgb", 17, internal_score=0.8, validation_score=0.8)
+    model = json.loads((second / "model.json").read_text(encoding="utf-8"))
+    model["launch_options"]["requested"]["robust_augmentation"] = True
+    (second / "model.json").write_text(json.dumps(model), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="incompatible controlled-protocol"):
+        run_aggregate(monkeypatch, tmp_path / "model_signature_aggregate", first, second)
+
+
+def test_aggregate_refuses_existing_output_directory(tmp_path: Path, monkeypatch) -> None:
+    first = write_experiment(tmp_path, "rgb", 7, internal_score=0.7, validation_score=0.7)
+    second = write_experiment(tmp_path, "rgb", 17, internal_score=0.8, validation_score=0.8)
+    output = tmp_path / "existing_aggregate"
+    output.mkdir()
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        run_aggregate(monkeypatch, output, first, second)

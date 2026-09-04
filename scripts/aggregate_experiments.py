@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from ai_image_detector.reproducibility import save_json
+from ai_image_detector.reproducibility import save_json, sha256_file
 
 METRICS = ("roc_auc", "balanced_accuracy", "macro_f1", "fpr_at_tpr_95")
 REPRESENTATIVE_SEED = 17
@@ -51,17 +51,21 @@ def load_metric_values(
     return values
 
 
-def load_selection_input(experiment_dir: Path) -> tuple[dict[str, object], dict[str, float]]:
+def load_selection_input(
+    experiment_dir: Path,
+) -> tuple[dict[str, object], dict[str, object], dict[str, float]]:
     """Load only the inputs allowed to influence prototype selection."""
     run_path = experiment_dir / "run.json"
+    model_path = experiment_dir / "model.json"
     validation_path = experiment_dir / "validation_metrics.json"
     run = load_json_object(run_path, "run metadata")
+    model = load_json_object(model_path, "model launch metadata")
     validation = load_metric_values(
         load_json_object(validation_path, "validation metrics"),
         validation_path,
         "validation metrics",
     )
-    return run, validation
+    return run, model, validation
 
 
 def load_internal_metrics(experiment_dir: Path) -> dict[str, float] | None:
@@ -108,13 +112,36 @@ def validation_threshold(run: dict[str, object], experiment_dir: Path) -> float:
     return numeric
 
 
-def run_signature(run: dict[str, object]) -> dict[str, object]:
-    """Return every available protocol field that must agree before alternatives compare.
+def checkpoint_sha256(experiment_dir: Path) -> str:
+    """Pin a completed candidate checkpoint before it can become the prototype record."""
+    checkpoint = experiment_dir / "best_model.pt"
+    if not checkpoint.is_file():
+        raise SystemExit(f"Expected completed checkpoint at {checkpoint}.")
+    return sha256_file(checkpoint)
+
+
+def assert_model_identity_matches_run(
+    run: dict[str, object], model: dict[str, object], experiment_dir: Path
+) -> None:
+    """Reject an artifact whose launch metadata identifies a different variant than ``run.json``."""
+    representation, seed = run_identity(run, experiment_dir)
+    launch_options = model.get("launch_options")
+    if not isinstance(launch_options, dict) or not isinstance(launch_options.get("requested"), dict):
+        raise SystemExit(f"Malformed model launch metadata in {experiment_dir}: requested options missing.")
+    requested = launch_options["requested"]
+    if requested.get("representation") != representation or requested.get("seed") != seed:
+        raise SystemExit(
+            f"Model launch metadata and run metadata disagree on representation/seed in {experiment_dir}."
+        )
+
+
+def run_signature(run: dict[str, object], model: dict[str, object]) -> dict[str, object]:
+    """Return every controlled-protocol fact that must agree before alternatives compare.
 
     ``representation``, ``seed`` and ``experiment_name`` identify the variants/repeats and are
-    intentionally excluded.  The current run artifact does not expose every desirable fact
-    (for example, a manifest hash), so this function checks all protocol metadata it can verify
-    rather than inventing a claim of equivalence.
+    intentionally excluded. The completed model-launch artifact supplies facts that do not belong
+    in ``run.json`` (manifest identity, initialization, augmentation, environment, and architecture),
+    so aggregation fails closed rather than comparing runs with only partial provenance.
     """
     config = run.get("config")
     preprocessing = run.get("preprocessing")
@@ -132,11 +159,83 @@ def run_signature(run: dict[str, object]) -> dict[str, object]:
     sampler_choice = sampler.get("choice")
     if not isinstance(sampler_choice, str) or not sampler_choice.strip():
         raise SystemExit("Every experiment must have a non-empty train sampler choice")
+
+    manifest = model.get("manifest")
+    model_preprocessing = model.get("preprocessing")
+    model_sampler = model.get("train_sampler")
+    launch_options = model.get("launch_options")
+    model_specification = model.get("model")
+    environment = model.get("environment_at_launch")
+    if (
+        not isinstance(manifest, dict)
+        or not isinstance(model_preprocessing, dict)
+        or not isinstance(model_sampler, dict)
+        or not isinstance(launch_options, dict)
+        or not isinstance(model_specification, dict)
+        or not isinstance(environment, dict)
+    ):
+        raise SystemExit(
+            "Every experiment must have complete model launch metadata for controlled aggregation"
+        )
+    manifest_sha256 = manifest.get("manifest_sha256")
+    row_counts = manifest.get("row_counts")
+    if not isinstance(manifest_sha256, str) or not manifest_sha256.strip() or not isinstance(
+        row_counts, dict
+    ):
+        raise SystemExit("Every experiment must record manifest SHA-256 and split row counts")
+    requested = launch_options.get("requested")
+    resolved = launch_options.get("resolved")
+    if not isinstance(requested, dict) or not isinstance(resolved, dict):
+        raise SystemExit("Every experiment must record requested and resolved launch options")
+    for field in ("from_scratch", "robust_augmentation"):
+        if not isinstance(requested.get(field), bool):
+            raise SystemExit(f"Every experiment must record boolean launch option {field!r}")
+    for field in ("architecture",):
+        value = model_specification.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise SystemExit(f"Every experiment must record non-empty model field {field!r}")
+    if not isinstance(model_specification.get("pretrained"), bool):
+        raise SystemExit("Every experiment must record boolean model field 'pretrained'")
+    if model_specification["pretrained"] == requested["from_scratch"]:
+        raise SystemExit(
+            "Every experiment must have consistent from_scratch and model.pretrained metadata"
+        )
+    trainable_parameters = model_specification.get("trainable_parameters")
+    if (
+        isinstance(trainable_parameters, bool)
+        or not isinstance(trainable_parameters, int)
+        or trainable_parameters <= 0
+    ):
+        raise SystemExit("Every experiment must record a positive model trainable_parameters count")
+    git_revision = environment.get("git_revision")
+    if not isinstance(git_revision, str) or not git_revision.strip():
+        raise SystemExit("Every experiment must record its launch git revision")
+
     excluded_config_keys = {"experiment_name", "representation", "seed"}
+    excluded_launch_keys = {"representation", "seed"}
     return {
-        "config": {key: value for key, value in config.items() if key not in excluded_config_keys},
-        "preprocessing": preprocessing,
-        "train_sampler": sampler,
+        "run": {
+            "config": {
+                key: value for key, value in config.items() if key not in excluded_config_keys
+            },
+            "preprocessing": preprocessing,
+            "train_sampler": sampler,
+        },
+        "model_launch": {
+            # The resolved checkout path may differ after a legitimate relocation; its immutable
+            # manifest bytes and row counts must still agree.
+            "manifest": {"manifest_sha256": manifest_sha256, "row_counts": row_counts},
+            "preprocessing": model_preprocessing,
+            "train_sampler": model_sampler,
+            "launch_options": {
+                "requested": {
+                    key: value for key, value in requested.items() if key not in excluded_launch_keys
+                },
+                "resolved": resolved,
+            },
+            "model": model_specification,
+            "environment_at_launch": environment,
+        },
     }
 
 
@@ -293,6 +392,7 @@ def build_prototype_selection(
                 "representative_seed": REPRESENTATIVE_SEED,
                 "experiment_dir": selected_run["experiment_dir"],
                 "experiment": selected_run["experiment"],
+                "checkpoint_sha256": selected_run["checkpoint_sha256"],
                 "validation_threshold": selected_run["validation_threshold"],
                 "validation_metrics": {
                     metric: selected_run[metric] for metric in METRICS
@@ -304,12 +404,14 @@ def build_prototype_selection(
 
 
 def internal_test_payload(
-    experiment_inputs: list[tuple[Path, dict[str, object], dict[str, float]]],
+    experiment_inputs: list[
+        tuple[Path, dict[str, object], dict[str, object], dict[str, float]]
+    ],
 ) -> tuple[list[dict[str, object]], list[str]]:
     """Optionally collect test reporting, without ever feeding it into selection."""
     records: list[dict[str, object]] = []
     missing: list[str] = []
-    for experiment_dir, run, _ in experiment_inputs:
+    for experiment_dir, run, _, _ in experiment_inputs:
         metrics = load_internal_metrics(experiment_dir)
         if metrics is None:
             missing.append(str(experiment_dir))
@@ -334,13 +436,21 @@ def main() -> None:
     args = parser.parse_args()
     if len(args.experiment_dir) < 2:
         raise SystemExit("Aggregate at least two independently seeded experiments; never choose one best seed.")
+    if args.output_dir.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite existing aggregate artifact: {args.output_dir}. "
+            "Choose a new --output-dir for a deliberate re-aggregation."
+        )
 
-    experiment_inputs: list[tuple[Path, dict[str, object], dict[str, float]]] = []
+    experiment_inputs: list[
+        tuple[Path, dict[str, object], dict[str, object], dict[str, float]]
+    ] = []
     signature: dict[str, object] | None = None
     validation_records: list[dict[str, object]] = []
     for experiment_dir in args.experiment_dir:
-        run, validation_metrics = load_selection_input(experiment_dir)
-        current_signature = run_signature(run)
+        run, model, validation_metrics = load_selection_input(experiment_dir)
+        assert_model_identity_matches_run(run, model, experiment_dir)
+        current_signature = run_signature(run, model)
         if signature is None:
             signature = current_signature
         elif current_signature != signature:
@@ -350,17 +460,19 @@ def main() -> None:
             )
         representation, seed = run_identity(run, experiment_dir)
         threshold = validation_threshold(run, experiment_dir)
+        checkpoint_hash = checkpoint_sha256(experiment_dir)
         validation_records.append(
             {
                 "experiment": experiment_dir.name,
                 "experiment_dir": str(experiment_dir.resolve()),
                 "representation": representation,
                 "seed": seed,
+                "checkpoint_sha256": checkpoint_hash,
                 "validation_threshold": threshold,
                 **validation_metrics,
             }
         )
-        experiment_inputs.append((experiment_dir, run, validation_metrics))
+        experiment_inputs.append((experiment_dir, run, model, validation_metrics))
 
     per_seed_validation = pd.DataFrame(validation_records).sort_values(["representation", "seed"])
     validation_aggregate = aggregate_by_representation(per_seed_validation)
@@ -407,7 +519,7 @@ def main() -> None:
             payload["metrics"] = aggregate_metrics(per_seed_internal)
         payload["internal_test_metrics_by_representation"] = internal_by_representation
         generator_frames: list[pd.DataFrame] = []
-        for experiment_dir, run, _ in experiment_inputs:
+        for experiment_dir, run, _, _ in experiment_inputs:
             per_generator_path = experiment_dir / "analysis" / "per_generator_metrics.csv"
             if not per_generator_path.is_file():
                 continue
