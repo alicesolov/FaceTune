@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PROJECT_ROOT / "scripts" / "run_baselines.py"
@@ -72,6 +73,22 @@ def test_baseline_launch_metadata_preserves_existing_fields_and_input_trace(tmp_
 
 def test_selected_baselines_keeps_an_explicit_single_baseline() -> None:
     assert run_baselines.selected_baselines("file_metadata_control") == ("file_metadata_control",)
+
+
+def test_baseline_output_paths_are_protocol_specific_and_refuse_overwrite(tmp_path: Path) -> None:
+    outputs = run_baselines.require_fresh_output_dirs(
+        tmp_path, ("radial_fft_logistic", "file_metadata_control"), 17, "h1n_square_crop_128_v1"
+    )
+    assert outputs == {
+        "radial_fft_logistic": tmp_path / "radial_fft_logistic_h1n_square_crop_128_v1_seed17",
+        "file_metadata_control": tmp_path / "file_metadata_control_seed17",
+    }
+
+    outputs["radial_fft_logistic"].mkdir()
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        run_baselines.require_fresh_output_dirs(
+            tmp_path, ("radial_fft_logistic", "file_metadata_control"), 17, "h1n_square_crop_128_v1"
+        )
 
 
 def test_run_one_writes_launch_provenance_to_its_existing_run_json(tmp_path: Path, monkeypatch) -> None:

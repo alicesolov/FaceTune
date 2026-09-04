@@ -39,6 +39,15 @@ from ai_image_detector.training import (
 MODEL_ARCHITECTURE = "resnet50"
 
 
+def require_fresh_output_dir(output_dir: Path) -> None:
+    """Refuse to replace an archived training artifact with a notebook rerun."""
+    if output_dir.exists():
+        raise FileExistsError(
+            f"Refusing to overwrite existing experiment artifact: {output_dir}. "
+            "Choose a new --output-dir for a deliberate reproduction."
+        )
+
+
 def manifest_launch_metadata(manifest_path: Path, frame: pd.DataFrame) -> dict[str, object]:
     """Describe the immutable input manifest used by an experiment launch."""
     split_counts = {
@@ -146,6 +155,7 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    require_fresh_output_dir(args.output_dir)
     # Capture this before loading data or building a model: a long run must not report a later
     # repository/environment state simply because it finished after local files changed.
     environment_at_launch = environment_snapshot()

@@ -639,7 +639,7 @@ The underlying machine-readable result files are `internal_test_metrics.json`,
 `analysis/per_generator_metrics.csv` in the experiment directory. The audit artifacts for the
 grouped split are in `artifacts/defactify_grouped_audit/`.
 
-**Canonical-provenance note.** The artifact above was regenerated from a clean launch at the
+**Canonical-provenance note.** The artifact above was regenerated in a fresh run launched at the
 recorded revision. Its `run.json` records the manifest hash and split counts, the launch environment,
 and the deterministic centre-crop policy for every split; its analysis uses 2,000 group-level
 bootstrap resamples with seed `20260829`. The older artifact whose metadata had incorrectly labelled

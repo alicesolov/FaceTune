@@ -76,6 +76,10 @@ uv run python scripts/analyze_predictions.py \
   --experiment-dir artifacts/h1n_rgb_resnet50_seed7 --bootstrap-repeats 2000
 ```
 
+The baseline and training launchers treat their output directories as archival records and refuse
+to overwrite them. For a deliberate reproduction, choose a new `--output-root` or `--output-dir`
+rather than replacing the canonical artifact.
+
 Run the matching FFT command with `--representation fft` and a distinct output directory. Only
 after all three predeclared seeds finish, aggregate them with `scripts/aggregate_experiments.py`;
 that script rejects a single run and never picks a best test-set seed.

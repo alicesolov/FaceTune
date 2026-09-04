@@ -38,6 +38,37 @@ def selected_baselines(only: str | None) -> tuple[str, ...]:
     return (only,) if only is not None else BASELINE_NAMES
 
 
+def output_dir_for_baseline(
+    output_root: Path, name: str, seed: int, preprocessing_protocol: str
+) -> Path:
+    """Return the one artifact directory owned by a concrete baseline launch."""
+    suffix = f"_{preprocessing_protocol}" if name == "radial_fft_logistic" else ""
+    return output_root / f"{name}{suffix}_seed{seed}"
+
+
+def require_fresh_output_dirs(
+    output_root: Path, baselines: tuple[str, ...], seed: int, preprocessing_protocol: str
+) -> dict[str, Path]:
+    """Reserve new artifact locations before a baseline can modify disk state.
+
+    A result directory is an archival record. Refusing an existing directory prevents a notebook
+    rerun from quietly replacing metrics or provenance; a deliberate reproduction must choose a
+    new output root instead.
+    """
+    outputs = {
+        name: output_dir_for_baseline(output_root, name, seed, preprocessing_protocol)
+        for name in baselines
+    }
+    existing = [path for path in outputs.values() if path.exists()]
+    if existing:
+        rendered = ", ".join(str(path) for path in existing)
+        raise FileExistsError(
+            f"Refusing to overwrite existing baseline artifact(s): {rendered}. "
+            "Choose a new --output-root for a deliberate reproduction."
+        )
+    return outputs
+
+
 def manifest_path_and_hash_at_launch(manifest_path: Path) -> tuple[Path, str]:
     """Capture an immutable manifest identity before the manifest is read."""
     resolved_path = manifest_path.resolve()
@@ -183,6 +214,10 @@ def main() -> None:
         help="Use legacy mode only to reproduce D0; H1-N controls default to source-normalised rasterisation.",
     )
     args = parser.parse_args()
+    baselines = selected_baselines(args.only)
+    outputs = require_fresh_output_dirs(
+        args.output_root, baselines, args.seed, args.preprocessing_protocol
+    )
     # Capture process and input identities before the manifest or any image pixels are processed.
     environment_at_launch = environment_snapshot()
     requested_options = requested_launch_options(args)
@@ -192,17 +227,15 @@ def main() -> None:
     if sha256_file(manifest_path) != manifest_sha256:
         raise SystemExit("Manifest changed while the baseline launch was starting; rerun it.")
     manifest = manifest_launch_metadata(manifest_path, manifest_sha256, frame)
-    baselines = selected_baselines(args.only)
     resolved_options = resolved_launch_options(requested_options, baselines)
     train, val, test = (frame[frame.split == split].copy() for split in ("train", "val", "test"))
     for name in baselines:
-        suffix = f"_{args.preprocessing_protocol}" if name == "radial_fft_logistic" else ""
         run_one(
             name,
             train,
             val,
             test,
-            args.output_root / f"{name}{suffix}_seed{args.seed}",
+            outputs[name],
             args.seed,
             args.preprocessing_protocol,
             manifest,

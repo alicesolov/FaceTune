@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = PROJECT_ROOT / "scripts" / "run_experiment.py"
@@ -13,6 +14,15 @@ SPEC = importlib.util.spec_from_file_location("run_experiment", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 run_experiment = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(run_experiment)
+
+
+def test_experiment_output_directory_refuses_overwrite(tmp_path: Path) -> None:
+    output_dir = tmp_path / "rgb_seed7"
+    run_experiment.require_fresh_output_dir(output_dir)
+    output_dir.mkdir()
+
+    with pytest.raises(FileExistsError, match="Refusing to overwrite"):
+        run_experiment.require_fresh_output_dir(output_dir)
 
 
 def test_model_launch_metadata_records_manifest_and_requested_options(tmp_path: Path) -> None:
