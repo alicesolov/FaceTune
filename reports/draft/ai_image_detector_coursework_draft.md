@@ -406,6 +406,7 @@ amended H1-N protocol is retained as a historical low-resolution pilot; it is no
 | Defactify native384 data-quality sensitivity audit | Observed; 16,328 retained rows, source/output hash audit passed | File-size-only ROC-AUC 0.650114 and BAcc 0.595238 are residual-bias evidence, not a detector result; no neural model is trained. |
 | DANI HighRes-v1 acquisition and split | Observed; 7,410 canonical rows, 1,482 parent groups, repeated integrity audit passed | Eligible for declared local training, but not by itself a performance result. |
 | DANI source metadata control | Observed on validation only | Original/canonical ROC-AUC 0.713427/0.537373; shortcut diagnostic, not detector evidence. |
+| DANI radial FFT logistic baseline | Observed on validation only; test not read | ROC-AUC 0.862972 and BAcc 0.803251 show pixel-frequency signal, but FPR@TPR95 0.376682 and ECE 0.170572 limit practical use. |
 | DANI practical RGB MPS series | Observed for seeds 7/17/42 on validation only; test not read | Mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and no favourable seed selected. |
 | HighRes-v1 robustness study | Not started | May begin only after the HighRes-v1 internal design is frozen. |
 | HighRes-v1 Synthbuster + RAISE-1k external evaluation | Locked, not opened for model selection | Confirmatory transfer evidence only after the HighRes-v1 checkpoint and threshold rule are frozen. |
@@ -678,6 +679,14 @@ The remaining weak association may reflect canonical PNG size/content correlatio
 dataset-bias warning and is unavailable to the pixel model as an explicit feature. The internal
 test was not evaluated for either control.
 
+The deterministic 64-bin radial log-power FFT baseline used the same 384 x 384 common raster and
+no file metadata. On validation it obtained ROC-AUC 0.862972, balanced accuracy 0.803251,
+macro-F1 0.810515, FPR@TPR95 0.376682, and 15-bin ECE 0.170572. Its improvement over the canonical
+metadata control supports the hypothesis that the pixels contain useful frequency-domain signal.
+Its high false-positive rate at high recall and poor calibration also show that radial power alone
+is not a sufficient operational detector. The threshold was selected on validation, and internal
+test was not read.
+
 The one-epoch MPS pilot is excluded because it was declared solely to test GPU allocation, data
 loading, checkpoint writing, and validation-only execution. All three predeclared practical runs
 then completed without producing an internal-test metrics file. Their validation results were:
@@ -696,6 +705,7 @@ better controlled representation because it uses ImageNet pretraining and has no
 | Required result | Design rule | Status |
 | --- | --- | --- |
 | HighRes-v1 practical RGB models | Pretrained ResNet-50, seeds 7/17/42, fixed batch/learning-rate/epoch/patience and parent-paired sampler. | Completed on validation only; mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and test unopened. |
+| HighRes-v1 radial FFT baseline | Deterministic 64-bin log-power features, logistic regression, same common raster, no metadata. | Completed on validation only; ROC-AUC 0.862972 and BAcc 0.803251; test unopened. |
 | HighRes-v1 representation comparison | Group-aware comparison only between models declared before internal test inspection. | Not started. |
 | Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | Not started. |
 | External Synthbuster + RAISE-1k test | Locked until HighRes-v1 architecture, checkpoint rule, seeds, and threshold are frozen; report per generator, relation category, aggregate, and worst-generator values. | Locked, not opened. |
