@@ -1,9 +1,10 @@
-"""Aggregate predeclared seed repeats without choosing a best test-set seed."""
+"""Aggregate seeded experiments and make validation-only prototype decisions."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 import pandas as pd
@@ -11,39 +12,319 @@ import pandas as pd
 from ai_image_detector.reproducibility import save_json
 
 METRICS = ("roc_auc", "balanced_accuracy", "macro_f1", "fpr_at_tpr_95")
+REPRESENTATIVE_SEED = 17
+OFFICIAL_REPRESENTATIONS = ("fft", "rgb")
+OFFICIAL_SEEDS = (7, 17, 42)
+PROTOTYPE_SELECTION_SCHEMA = "ai_image_detector_validation_selection_v1"
 
 
-def load_one(experiment_dir: Path) -> tuple[dict[str, object], dict[str, object]]:
+def load_json_object(path: Path, artifact_name: str) -> dict[str, object]:
+    """Load one required JSON object with an actionable error message."""
+    if not path.is_file():
+        raise SystemExit(f"Expected {artifact_name} at {path}.")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise SystemExit(f"Could not read valid JSON {artifact_name} at {path}: {error}") from error
+    if not isinstance(payload, dict):
+        raise SystemExit(f"Expected {artifact_name} at {path} to be a JSON object.")
+    return payload
+
+
+def load_metric_values(
+    payload: dict[str, object], path: Path, artifact_name: str
+) -> dict[str, float]:
+    """Require finite metrics so an incomplete artifact cannot influence a mean."""
+    values: dict[str, float] = {}
+    for metric in METRICS:
+        value = payload.get(metric)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise SystemExit(
+                f"Malformed {artifact_name} at {path}: {metric!r} must be a finite number."
+            )
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            raise SystemExit(
+                f"Malformed {artifact_name} at {path}: {metric!r} must be finite."
+            )
+        values[metric] = numeric
+    return values
+
+
+def load_selection_input(experiment_dir: Path) -> tuple[dict[str, object], dict[str, float]]:
+    """Load only the inputs allowed to influence prototype selection."""
     run_path = experiment_dir / "run.json"
-    summary_path = experiment_dir / "analysis" / "analysis_summary.json"
-    if not run_path.is_file() or not summary_path.is_file():
-        raise SystemExit(
-            f"Expected completed run and analysis artifacts at {run_path} and {summary_path}."
-        )
-    return (
-        json.loads(run_path.read_text(encoding="utf-8")),
-        json.loads(summary_path.read_text(encoding="utf-8")),
+    validation_path = experiment_dir / "validation_metrics.json"
+    run = load_json_object(run_path, "run metadata")
+    validation = load_metric_values(
+        load_json_object(validation_path, "validation metrics"),
+        validation_path,
+        "validation metrics",
     )
+    return run, validation
+
+
+def load_internal_metrics(experiment_dir: Path) -> dict[str, float] | None:
+    """Load optional descriptive internal-test metrics after selection is already decided."""
+    summary_path = experiment_dir / "analysis" / "analysis_summary.json"
+    if not summary_path.is_file():
+        return None
+    summary = load_json_object(summary_path, "completed internal-test analysis")
+    metrics = summary.get("metrics")
+    if not isinstance(metrics, dict):
+        raise SystemExit(f"Malformed completed internal-test analysis at {summary_path}: missing metrics.")
+    return load_metric_values(metrics, summary_path, "completed internal-test analysis")
+
+
+def run_identity(run: dict[str, object], experiment_dir: Path) -> tuple[str, int]:
+    """Read the two run-specific fields that may vary across controlled repeats."""
+    config = run.get("config")
+    if not isinstance(config, dict):
+        raise SystemExit(f"Malformed run metadata in {experiment_dir}: config must be an object.")
+    representation = config.get("representation")
+    seed = config.get("seed")
+    if not isinstance(representation, str) or not representation.strip():
+        raise SystemExit(
+            f"Malformed run metadata in {experiment_dir}: config.representation must be non-empty."
+        )
+    if isinstance(seed, bool) or not isinstance(seed, int):
+        raise SystemExit(f"Malformed run metadata in {experiment_dir}: config.seed must be an integer.")
+    return representation, seed
+
+
+def validation_threshold(run: dict[str, object], experiment_dir: Path) -> float:
+    """Read the frozen, validation-selected operating threshold from the run artifact."""
+    threshold = run.get("threshold")
+    if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
+        raise SystemExit(
+            f"Malformed run metadata in {experiment_dir}: validation-selected threshold is missing."
+        )
+    numeric = float(threshold)
+    if not math.isfinite(numeric) or not 0.0 <= numeric <= 1.0:
+        raise SystemExit(
+            f"Malformed run metadata in {experiment_dir}: validation-selected threshold must be "
+            "finite and in [0, 1]."
+        )
+    return numeric
 
 
 def run_signature(run: dict[str, object]) -> dict[str, object]:
+    """Return every available protocol field that must agree before alternatives compare.
+
+    ``representation``, ``seed`` and ``experiment_name`` identify the variants/repeats and are
+    intentionally excluded.  The current run artifact does not expose every desirable fact
+    (for example, a manifest hash), so this function checks all protocol metadata it can verify
+    rather than inventing a claim of equivalence.
+    """
     config = run.get("config")
     preprocessing = run.get("preprocessing")
     sampler = run.get("train_sampler")
-    if not isinstance(config, dict) or not isinstance(preprocessing, dict) or not isinstance(sampler, dict):
+    if (
+        not isinstance(config, dict)
+        or not isinstance(preprocessing, dict)
+        or not isinstance(sampler, dict)
+    ):
         raise SystemExit("Every experiment must have current config/preprocessing/sampler metadata")
+    if not isinstance(preprocessing.get("protocol"), str) or not isinstance(
+        preprocessing.get("version"), str
+    ) or not isinstance(preprocessing.get("image_size"), int):
+        raise SystemExit("Every experiment must have complete preprocessing protocol metadata")
+    sampler_choice = sampler.get("choice")
+    if not isinstance(sampler_choice, str) or not sampler_choice.strip():
+        raise SystemExit("Every experiment must have a non-empty train sampler choice")
+    excluded_config_keys = {"experiment_name", "representation", "seed"}
     return {
-        "representation": config.get("representation"),
-        "epochs": config.get("epochs"),
-        "batch_size": config.get("batch_size"),
-        "learning_rate": config.get("learning_rate"),
-        "weight_decay": config.get("weight_decay"),
-        "patience": config.get("patience"),
-        "preprocessing_protocol": preprocessing.get("protocol"),
-        "preprocessing_version": preprocessing.get("version"),
-        "image_size": preprocessing.get("image_size"),
-        "train_sampler": sampler.get("choice"),
+        "config": {key: value for key, value in config.items() if key not in excluded_config_keys},
+        "preprocessing": preprocessing,
+        "train_sampler": sampler,
     }
+
+
+def aggregate_metrics(frame: pd.DataFrame) -> dict[str, dict[str, float | int | None]]:
+    """Summarise fixed metric columns for an already validated set of seed records."""
+    n_seeds = len(frame)
+    return {
+        metric: {
+            "mean": float(pd.to_numeric(frame[metric], errors="raise").mean()),
+            "std": (
+                float(pd.to_numeric(frame[metric], errors="raise").std(ddof=1))
+                if n_seeds > 1
+                else None
+            ),
+            "n_seeds": n_seeds,
+        }
+        for metric in METRICS
+    }
+
+
+def aggregate_by_representation(
+    frame: pd.DataFrame,
+) -> dict[str, dict[str, dict[str, float | int | None]]]:
+    """Preserve representation boundaries in every aggregate used for comparison."""
+    return {
+        str(representation): aggregate_metrics(group)
+        for representation, group in frame.groupby("representation", sort=True)
+    }
+
+
+def seed_sets_and_duplicate_check(per_seed_validation: pd.DataFrame) -> dict[str, tuple[int, ...]]:
+    """Return seed sets, rejecting duplicate representation/seed rows outright."""
+    result: dict[str, tuple[int, ...]] = {}
+    for representation, group in per_seed_validation.groupby("representation", sort=True):
+        values = [int(seed) for seed in group["seed"].tolist()]
+        if len(set(values)) != len(values):
+            raise SystemExit(
+                "Duplicate seed for representation "
+                f"{representation!r}; each representation/seed pair must be unique."
+            )
+        result[str(representation)] = tuple(sorted(values))
+    return result
+
+
+def validation_aggregate_rows(
+    aggregate: dict[str, dict[str, dict[str, float | int | None]]],
+    seed_sets: dict[str, tuple[int, ...]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for representation, metrics in aggregate.items():
+        row: dict[str, object] = {
+            "representation": representation,
+            "seeds": ",".join(str(seed) for seed in seed_sets[representation]),
+            "n_seeds": metrics["balanced_accuracy"]["n_seeds"],
+        }
+        for metric in METRICS:
+            row[f"{metric}_mean"] = metrics[metric]["mean"]
+            row[f"{metric}_std"] = metrics[metric]["std"]
+        rows.append(row)
+    return rows
+
+
+def representative_run(per_seed_validation: pd.DataFrame, representation: str) -> dict[str, object]:
+    """Return fixed seed 17, never whichever repeat looks best after measurement."""
+    rows = per_seed_validation[
+        (per_seed_validation["representation"] == representation)
+        & (per_seed_validation["seed"] == REPRESENTATIVE_SEED)
+    ]
+    if len(rows) != 1:
+        raise AssertionError("Representative run must be checked before it is requested")
+    return rows.iloc[0].to_dict()
+
+
+def protocol_issues(seed_sets: dict[str, tuple[int, ...]]) -> list[str]:
+    """Describe why validation aggregates are not sufficient for a prototype decision."""
+    issues: list[str] = []
+    observed_representations = tuple(sorted(seed_sets))
+    if observed_representations != OFFICIAL_REPRESENTATIONS:
+        issues.append(
+            "official prototype selection requires exactly representations "
+            f"{list(OFFICIAL_REPRESENTATIONS)}; got {list(observed_representations)}"
+        )
+    for representation in OFFICIAL_REPRESENTATIONS:
+        observed_seeds = seed_sets.get(representation, ())
+        if observed_seeds != OFFICIAL_SEEDS:
+            issues.append(
+                f"representation {representation!r} requires exactly predeclared seeds "
+                f"{list(OFFICIAL_SEEDS)}; got {list(observed_seeds)}"
+            )
+    return issues
+
+
+def build_prototype_selection(
+    per_seed_validation: pd.DataFrame,
+    validation_aggregate: dict[str, dict[str, dict[str, float | int | None]]],
+    signature: dict[str, object],
+) -> dict[str, object]:
+    """Create a distinct validation-only record for a later external-evaluation gate."""
+    seed_sets = seed_sets_and_duplicate_check(per_seed_validation)
+    candidates = validation_aggregate_rows(validation_aggregate, seed_sets)
+    issues = protocol_issues(seed_sets)
+    selection_rule: dict[str, object] = {
+        "kind": "prototype_selection_rule_not_external_validation",
+        "metric_source": "validation_metrics.json only",
+        "primary_metric": "mean validation balanced_accuracy",
+        "tie_breakers": ["mean validation roc_auc", "lexicographic representation name"],
+        "expected_representations": list(OFFICIAL_REPRESENTATIONS),
+        "expected_seeds": list(OFFICIAL_SEEDS),
+        "representative_seed": REPRESENTATIVE_SEED,
+        "internal_test_metrics_used_for_selection": False,
+        "external_validation_completed": False,
+    }
+    record: dict[str, object] = {
+        "schema_version": PROTOTYPE_SELECTION_SCHEMA,
+        "selection_rule": selection_rule,
+        "common_run_signature": signature,
+        "candidates": candidates,
+    }
+    if issues:
+        record.update(
+            {
+                "selection_status": "incomplete_protocol",
+                "decision": {
+                    "made": False,
+                    "reason": "; ".join(issues),
+                    "selected_representation": None,
+                    "representative_seed": REPRESENTATIVE_SEED,
+                    "experiment_dir": None,
+                },
+            }
+        )
+        return record
+
+    representations = sorted(validation_aggregate)
+    selected_representation = min(
+        representations,
+        key=lambda representation: (
+            -float(validation_aggregate[representation]["balanced_accuracy"]["mean"]),
+            -float(validation_aggregate[representation]["roc_auc"]["mean"]),
+            representation,
+        ),
+    )
+    selected_run = representative_run(per_seed_validation, selected_representation)
+    record.update(
+        {
+            "selection_status": "validation_selected_pending_external_validation",
+            "decision": {
+                "made": True,
+                "reason": (
+                    "highest mean validation balanced_accuracy; exact ties resolved by mean "
+                    "validation roc_auc then lexicographic representation name"
+                ),
+                "selected_representation": selected_representation,
+                "representative_seed": REPRESENTATIVE_SEED,
+                "experiment_dir": selected_run["experiment_dir"],
+                "experiment": selected_run["experiment"],
+                "validation_threshold": selected_run["validation_threshold"],
+                "validation_metrics": {
+                    metric: selected_run[metric] for metric in METRICS
+                },
+            },
+        }
+    )
+    return record
+
+
+def internal_test_payload(
+    experiment_inputs: list[tuple[Path, dict[str, object], dict[str, float]]],
+) -> tuple[list[dict[str, object]], list[str]]:
+    """Optionally collect test reporting, without ever feeding it into selection."""
+    records: list[dict[str, object]] = []
+    missing: list[str] = []
+    for experiment_dir, run, _ in experiment_inputs:
+        metrics = load_internal_metrics(experiment_dir)
+        if metrics is None:
+            missing.append(str(experiment_dir))
+            continue
+        representation, seed = run_identity(run, experiment_dir)
+        records.append(
+            {
+                "experiment": experiment_dir.name,
+                "experiment_dir": str(experiment_dir.resolve()),
+                "representation": representation,
+                "seed": seed,
+                **metrics,
+            }
+        )
+    return records, missing
 
 
 def main() -> None:
@@ -54,11 +335,11 @@ def main() -> None:
     if len(args.experiment_dir) < 2:
         raise SystemExit("Aggregate at least two independently seeded experiments; never choose one best seed.")
 
-    records: list[dict[str, object]] = []
+    experiment_inputs: list[tuple[Path, dict[str, object], dict[str, float]]] = []
     signature: dict[str, object] | None = None
-    generator_frames: list[pd.DataFrame] = []
+    validation_records: list[dict[str, object]] = []
     for experiment_dir in args.experiment_dir:
-        run, summary = load_one(experiment_dir)
+        run, validation_metrics = load_selection_input(experiment_dir)
         current_signature = run_signature(run)
         if signature is None:
             signature = current_signature
@@ -67,56 +348,90 @@ def main() -> None:
                 "Experiments have incompatible controlled-protocol configuration: "
                 f"expected {signature}, got {current_signature} for {experiment_dir}"
             )
-        config = run["config"]
-        metrics = summary.get("metrics")
-        if not isinstance(config, dict) or not isinstance(metrics, dict):
-            raise SystemExit(f"Malformed summary or config in {experiment_dir}")
-        row = {
-            "experiment": experiment_dir.name,
-            "seed": config.get("seed"),
-            **{metric: metrics.get(metric) for metric in METRICS},
+        representation, seed = run_identity(run, experiment_dir)
+        threshold = validation_threshold(run, experiment_dir)
+        validation_records.append(
+            {
+                "experiment": experiment_dir.name,
+                "experiment_dir": str(experiment_dir.resolve()),
+                "representation": representation,
+                "seed": seed,
+                "validation_threshold": threshold,
+                **validation_metrics,
+            }
+        )
+        experiment_inputs.append((experiment_dir, run, validation_metrics))
+
+    per_seed_validation = pd.DataFrame(validation_records).sort_values(["representation", "seed"])
+    validation_aggregate = aggregate_by_representation(per_seed_validation)
+    assert signature is not None
+    prototype_selection = build_prototype_selection(
+        per_seed_validation, validation_aggregate, signature
+    )
+
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    per_seed_validation.to_csv(args.output_dir / "per_seed_validation_metrics.csv", index=False)
+    seed_sets = seed_sets_and_duplicate_check(per_seed_validation)
+    pd.DataFrame(validation_aggregate_rows(validation_aggregate, seed_sets)).to_csv(
+        args.output_dir / "validation_metric_mean_std.csv", index=False
+    )
+    save_json(prototype_selection, args.output_dir / "prototype_selection_record.json")
+
+    payload: dict[str, object] = {
+        "status": "validation_aggregated",
+        "selection_rule": (
+            "Prototype selection uses validation_metrics.json only and is not external validation. "
+            "No best seed is selected from internal-test metrics."
+        ),
+        "signature": signature,
+        "validation_metrics_by_representation": validation_aggregate,
+        "prototype_selection_file": "prototype_selection_record.json",
+        "prototype_selection": prototype_selection,
+    }
+
+    internal_records, missing_internal_analysis = internal_test_payload(experiment_inputs)
+    if missing_internal_analysis:
+        payload["internal_test_reporting"] = {
+            "status": "not_available_for_all_runs",
+            "missing_analysis": missing_internal_analysis,
         }
-        records.append(row)
-        per_generator_path = experiment_dir / "analysis" / "per_generator_metrics.csv"
-        if per_generator_path.is_file():
+    else:
+        per_seed_internal = pd.DataFrame(internal_records).sort_values(["representation", "seed"])
+        per_seed_internal.to_csv(args.output_dir / "per_seed_internal_metrics.csv", index=False)
+        payload["experiments"] = per_seed_internal.to_dict(orient="records")
+        internal_by_representation = aggregate_by_representation(per_seed_internal)
+        # ``metrics`` is retained only for the prior single-representation aggregate output.
+        # Pooling RGB and FFT test metrics would hide the representation boundary and could be
+        # mistaken for a model-selection score.
+        if len(internal_by_representation) == 1:
+            payload["metrics"] = aggregate_metrics(per_seed_internal)
+        payload["internal_test_metrics_by_representation"] = internal_by_representation
+        generator_frames: list[pd.DataFrame] = []
+        for experiment_dir, run, _ in experiment_inputs:
+            per_generator_path = experiment_dir / "analysis" / "per_generator_metrics.csv"
+            if not per_generator_path.is_file():
+                continue
+            representation, seed = run_identity(run, experiment_dir)
             per_generator = pd.read_csv(per_generator_path)
-            per_generator.insert(0, "seed", config.get("seed"))
+            per_generator.insert(0, "seed", seed)
+            per_generator.insert(0, "representation", representation)
             per_generator.insert(0, "experiment", experiment_dir.name)
             generator_frames.append(per_generator)
-
-    per_seed = pd.DataFrame(records).sort_values("seed")
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    per_seed.to_csv(args.output_dir / "per_seed_internal_metrics.csv", index=False)
-    aggregate = {
-        metric: {
-            "mean": float(pd.to_numeric(per_seed[metric], errors="coerce").mean()),
-            "std": float(pd.to_numeric(per_seed[metric], errors="coerce").std(ddof=1)),
-            "n_seeds": len(per_seed),
-        }
-        for metric in METRICS
-    }
-    payload: dict[str, object] = {
-        "status": "exploratory_internal_stress_test",
-        "selection_rule": "All predeclared seeds are aggregated; no best seed is selected.",
-        "signature": signature,
-        "experiments": per_seed.to_dict(orient="records"),
-        "metrics": aggregate,
-    }
-    if generator_frames:
-        combined_generators = pd.concat(generator_frames, ignore_index=True)
-        combined_generators.to_csv(args.output_dir / "per_seed_generator_metrics.csv", index=False)
-        numeric = [metric for metric in METRICS if metric in combined_generators]
-        generator_aggregate = (
-            combined_generators.groupby("generator", as_index=False)[numeric]
-            .agg(["mean", "std"])
-            .reset_index()
-        )
-        generator_aggregate.columns = [
-            "_".join(part for part in column if part) if isinstance(column, tuple) else column
-            for column in generator_aggregate.columns
-        ]
-        generator_aggregate.to_csv(args.output_dir / "generator_metric_mean_std.csv", index=False)
-        payload["generator_aggregate_file"] = "generator_metric_mean_std.csv"
+        if generator_frames:
+            combined_generators = pd.concat(generator_frames, ignore_index=True)
+            combined_generators.to_csv(args.output_dir / "per_seed_generator_metrics.csv", index=False)
+            numeric = [metric for metric in METRICS if metric in combined_generators]
+            generator_aggregate = (
+                combined_generators.groupby("generator", as_index=False)[numeric]
+                .agg(["mean", "std"])
+                .reset_index()
+            )
+            generator_aggregate.columns = [
+                "_".join(part for part in column if part) if isinstance(column, tuple) else column
+                for column in generator_aggregate.columns
+            ]
+            generator_aggregate.to_csv(args.output_dir / "generator_metric_mean_std.csv", index=False)
+            payload["generator_aggregate_file"] = "generator_metric_mean_std.csv"
     save_json(payload, args.output_dir / "aggregate_summary.json")
     print(json.dumps(payload, indent=2))
 
