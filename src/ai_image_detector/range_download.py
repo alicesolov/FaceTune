@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import BinaryIO, Final
 from urllib.request import Request, urlopen
@@ -14,6 +16,24 @@ DEFAULT_PART_SIZE: Final = 256 * 1024 * 1024
 DEFAULT_CHUNK_SIZE: Final = 1024 * 1024
 
 OpenUrl = Callable[..., BinaryIO]
+
+
+@contextmanager
+def _exclusive_download_lock(destination: Path) -> Iterator[None]:
+    """Prevent concurrent processes from appending to the same resumable part files."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = destination.with_name(destination.name + ".download.lock")
+    with lock_path.open("a+b") as handle:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as error:
+            raise RuntimeError(
+                f"Another process is already downloading the same target: {destination}"
+            ) from error
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _ranges(total_size: int, part_size: int) -> list[tuple[int, int]]:
@@ -106,6 +126,35 @@ def download_range_file(
     ):
         raise ValueError("Range download arguments are invalid")
     destination = Path(target)
+    with _exclusive_download_lock(destination):
+        return _download_range_file_locked(
+            url,
+            destination,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+            workers=workers,
+            part_size=part_size,
+            chunk_size=chunk_size,
+            timeout=timeout,
+            max_attempts=max_attempts,
+            opener=opener,
+        )
+
+
+def _download_range_file_locked(
+    url: str,
+    destination: Path,
+    *,
+    expected_size: int,
+    expected_sha256: str,
+    workers: int,
+    part_size: int,
+    chunk_size: int,
+    timeout: float,
+    max_attempts: int,
+    opener: OpenUrl,
+) -> Path:
+    """Run one already locked range download."""
     if destination.is_file():
         if destination.stat().st_size == expected_size:
             digest_state = hashlib.sha256()
@@ -137,7 +186,6 @@ def download_range_file(
     with ThreadPoolExecutor(max_workers=workers) as executor:
         list(executor.map(download, ranges))
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
     assembling = destination.with_name(destination.name + ".assembling")
     if assembling.exists():
         assembling.unlink()

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import io
 from pathlib import Path
@@ -100,3 +101,21 @@ def test_range_download_rejects_server_that_ignores_range(tmp_path: Path) -> Non
             part_size=len(data),
             opener=ignores_range,
         )
+
+
+def test_range_download_rejects_concurrent_writer(tmp_path: Path) -> None:
+    data = b"locked-content"
+    target = tmp_path / "data.bin"
+    lock_path = target.with_name(target.name + ".download.lock")
+    with lock_path.open("a+b") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(RuntimeError, match="Another process"):
+            range_download.download_range_file(
+                "https://example.test/data.bin",
+                target,
+                expected_size=len(data),
+                expected_sha256=hashlib.sha256(data).hexdigest(),
+                workers=1,
+                part_size=len(data),
+                opener=_opener(data, []),
+            )
