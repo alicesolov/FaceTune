@@ -57,6 +57,14 @@ per generator, architecture/subset and real-source strata, and the intended trai
 roles. Its SHA-256 is part of the experiment identity. Quotas are intentionally **not** guessed
 before the full metadata audit establishes how many valid, diverse rows exist.
 
+The selection stage is fail-closed. It must reject an incomplete or hash-mismatched catalog, a
+duplicate source locator, an inconsistent prompt-derived group, contradictory
+`label`/`architecture`/`model_name` semantics, or an insufficient jointly supported source stratum
+for the two classes. It must also record a deterministic rank for every eligible locator and a
+pre-ranked reserve. A damaged or duplicate image may be replaced only by the next reserve item
+from that frozen rank: neither manual curation nor a fresh random draw is permitted after image
+bytes have been inspected.
+
 ## Acquisition and leakage audit
 
 1. Record a source lock: repository ID, immutable revision, licence, every Parquet shard path,
@@ -70,16 +78,24 @@ before the full metadata audit establishes how many valid, diverse rows exist.
    repeated image names and prompt groups. A partial scout is never eligible to become a research
    manifest.
 4. Freeze the catalog-derived selection manifest. Only then materialise the exact selected rows.
-   For every materialised file record file SHA-256, perceptual hash, decoded dimensions and byte
-   count. Exclude or quarantine exact/near duplicates that cross labels or intended partitions.
-5. Allocate splits by connected leakage components formed from source locators, prompt groups,
-   exact hashes and perceptual hashes. Validation alone controls early stopping, hyperparameters,
-   calibration and threshold. The internal test and all external sources remain untouched during
-   those decisions.
+   The materialiser must verify that each received row agrees with its pinned catalog metadata and
+   that its actual decoded bytes are PNG, RGB, 512 x 512 and non-corrupt. For every accepted file
+   record byte SHA-256, decoded-pixel SHA-256, perceptual hash, decoded dimensions and byte count.
+   Original images and the complete local manifest remain outside Git.
+5. Build the duplicate graph before assigning any HighRes-v1 partition. Its edges include source
+   prompt/content groups, exact file or pixel hashes, and perceptual-hash candidates. An identical
+   decoded image with conflicting labels is quarantined rather than silently assigned a preferred
+   label; a perceptually close pair is a leakage boundary, not proof of identity. Exact duplicates
+   within one label are reduced deterministically to one canonical instance.
+6. Allocate splits by whole connected leakage components. Validation alone controls early stopping,
+   hyperparameters, calibration and threshold. The internal test and all external sources remain
+   untouched during those decisions.
 
 The dataset's published `split` field is preserved as source metadata. It is not silently replaced
 by a random split, and its relationship to HighRes-v1 roles will be stated in the frozen selection
-manifest.
+manifest. If that upstream field is documented and consistent, it becomes a hard boundary; if it is
+not a meaningful boundary, the new component-level split and its objective are declared explicitly,
+with a cross-tab against the upstream field retained in the final audit.
 
 ## Preprocessing and compute contract
 
