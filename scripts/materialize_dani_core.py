@@ -17,6 +17,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--byte-cap", type=int, default=MATERIALISATION_BYTE_BUDGET)
     parser.add_argument("--download-workers", type=int, default=8)
+    parser.add_argument(
+        "--downloader",
+        choices=("range", "hf"),
+        default="range",
+        help=(
+            "Use the resumable direct range downloader or Hugging Face Hub/Xet. Both paths are "
+            "verified against the same frozen size and SHA-256 before extraction."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -30,7 +39,11 @@ def main() -> None:
         args.core_dir,
         args.staging_dir,
         args.output_dir,
-        downloader=make_range_downloader(workers=args.download_workers),
+        downloader=(
+            make_range_downloader(workers=args.download_workers)
+            if args.downloader == "range"
+            else None
+        ),
         byte_cap=args.byte_cap,
         progress=progress,
     )
