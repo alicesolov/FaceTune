@@ -54,8 +54,8 @@ seeded-random square crop, whereas the fixed-feature radial baseline uses a dete
 crop for every split; the two roles must not be conflated. The grouped internal test was viewed for
 D0, so amended internal results are exploratory stress-test evidence rather than a confirmatory
 test. The external test is required before any transfer claim.
-- Repeat final selected experiments for three seeds. Report mean, standard deviation and 95% bootstrap
-  intervals; do not choose the best seed.
+- Repeat each neural representation for seeds 7, 17 and 42. Report mean, standard deviation and
+  95% bootstrap intervals; do not choose a best test-set seed.
 
 ## Models and equal budget
 
@@ -74,6 +74,26 @@ FFT magnitude image.
 The FFT version discards phase and colour. It is a hypothesis baseline, not a declaration that this
 representation is optimal. D0 legacy controls remain in the artefact directory but do not influence
 H1-N selection.
+
+## Frozen selection and external scoring rule
+
+Before opening the external data, complete the six predeclared H1-N runs and their analysis
+artifacts. The internal grouped test remains reportable exploratory evidence, but it does **not**
+choose a representation, checkpoint, threshold, or seed. A later local prototype follows this
+fixed validation-only rule:
+
+1. Aggregate validation balanced accuracy over seeds 7, 17 and 42 for each representation.
+2. Select the representation with the larger mean validation balanced accuracy; an exact tie uses
+   mean validation ROC-AUC, then the lexicographically earlier representation name.
+3. Use seed 17 of that selected representation as the representative prototype checkpoint, rather
+   than selecting the numerically best seed. If that run is unavailable, do not substitute another
+   seed and leave the prototype disabled.
+4. Retain each selected run's own validation-derived threshold unchanged.
+
+The locked external benchmark is scored for **all six** predeclared checkpoints and reported by
+representation and seed. Its scores cannot revise the preceding rule. A prototype may be marked
+externally evaluated only when its corresponding external artifact and limitations are recorded;
+a weak or unsafe external result is a valid reason to keep the local interface disabled.
 
 ## Metrics and reporting language
 

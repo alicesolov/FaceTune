@@ -31,9 +31,10 @@ On the resulting exploratory internal test, a controlled 64-bin radial-spectrum 
 baseline obtained ROC-AUC 0.708864, balanced accuracy 0.653833, and macro-F1 0.587577. Its result
 varied materially by generator, with DALL-E 3 close to chance by balanced accuracy (0.530625).
 
-No completed, reportable neural result exists at the snapshot date: RGB ResNet-50 seed 7 is in
-progress, while the other predeclared neural runs, the reportable robustness study, and the locked
-external Synthbuster + RAISE-1k evaluation remain pending. Therefore the report offers a
+No completed, reportable neural result exists at the snapshot date: an RGB ResNet-50 seed-7 pilot
+completed before launch-time provenance was recorded and is excluded from H1-N evidence. The
+strictly recorded neural runs, the reportable robustness study, and the locked external Synthbuster
+and RAISE-1k evaluation remain pending. Therefore the report offers a
 reproducible protocol and a limited exploratory observation, not a claim of general AI-image
 detection. A local prototype interface is deliberately gated on a completed, explicitly selected
 checkpoint and must display an experimental model score rather than a probability or proof.
@@ -305,7 +306,7 @@ amended H1-N protocol was locked before the neural runs.
 | --- | --- | --- |
 | D0 legacy radial FFT and metadata control | Observed | Bias diagnostics only; not used for model selection or deployment. |
 | H1-N controlled radial FFT logistic regression, seed 7 | Observed | Exploratory internal stress-test evidence. |
-| H1-N RGB ResNet-50, seeds 7/17/42 | Seed 7 in progress; no completed/reportable result | Required for the primary equal-budget representation comparison. |
+| H1-N RGB ResNet-50, seeds 7/17/42 | A pre-provenance seed-7 pilot completed but is excluded; strictly recorded runs pending | Required for the primary equal-budget representation comparison. |
 | H1-N FFT ResNet-50, seeds 7/17/42 | Pending | Required for the primary equal-budget representation comparison. |
 | H3 transformation/robust-augmentation study | No reportable result | Smoke artifacts are not H3 evidence; the study must be reported separately from clean performance. |
 | H2 Synthbuster + RAISE-1k external evaluation | Pending | Confirmatory transfer evidence only after the design is frozen. |
@@ -359,6 +360,14 @@ maximises validation balanced accuracy. The internal test is never used for thre
 Because D0 has already exposed that test split, amended H1-N test results remain **exploratory**;
 they cannot serve as a confirmatory result.
 
+Before the external data are opened, the following selection rule is fixed. For each representation,
+validation balanced accuracy is averaged over seeds 7, 17, and 42. The representation with the
+larger mean is the prototype candidate; an exact tie is resolved by mean validation ROC-AUC and
+then by the lexicographically earlier representation name. The candidate checkpoint is the
+predeclared seed-17 run of that representation, not its numerically best seed; if it is unavailable,
+the prototype stays disabled. Its existing validation-derived threshold is kept unchanged. The
+grouped internal test and external scores cannot revise this rule.
+
 The primary metrics are ROC-AUC, balanced accuracy, and macro-F1. Accuracy is secondary because
 the corpus has 12,000 synthetic and 2,400 real test images, so an all-synthetic prediction would
 already yield high plain accuracy. Secondary reporting includes class recall, precision, PR-AUC,
@@ -382,9 +391,11 @@ with the otherwise matched FFT model only after its training configuration is do
 
 For external evaluation, model family, preprocessing, selected checkpoint rule, seed aggregation,
 and validation threshold must be frozen. The external report will contrast all RAISE real images
-with each Synthbuster generator separately, followed by macro-average and worst-generator values.
-It will additionally stratify the predeclared training-relation categories rather than relabel the
-whole corpus as unseen. This design tests transfer to a new real-photo source and a range of
+with each Synthbuster generator separately for all six predeclared neural checkpoints, followed by
+representation/seed summaries, macro-average, and worst-generator values. It will additionally
+stratify the predeclared training-relation categories rather than relabel the whole corpus as
+unseen. External metrics are a fixed transfer check, not an opportunity to replace the selected
+representation or seed. This design tests transfer to a new real-photo source and a range of
 generator relationships, not merely a larger test set.
 
 ---
@@ -487,7 +498,7 @@ as empty work items rather than as blank prose that could later be mistaken for 
 
 | Required result | Design rule | Status |
 | --- | --- | --- |
-| RGB ResNet-50, seeds 7/17/42 | From scratch; same raster, sampler, optimiser family, epoch cap, batch size, early stopping, and validation-only threshold as FFT. | Seed 7 in progress; no completed/reportable result. |
+| RGB ResNet-50, seeds 7/17/42 | From scratch; same raster, sampler, optimiser family, epoch cap, batch size, early stopping, and validation-only threshold as FFT. | A seed-7 pilot is preserved separately but excluded for missing launch-time provenance; strictly recorded runs pending. |
 | FFT ResNet-50, seeds 7/17/42 | Same as RGB; magnitude-only FFT representation. | Pending |
 | RGB-versus-FFT paired differences | Cluster bootstrap of matched prediction paths and leakage groups; report seed aggregation rather than a best seed. | Pending |
 | Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | No reportable H3 result; smoke artifacts are not evidence. |

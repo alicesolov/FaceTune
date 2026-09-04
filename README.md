@@ -146,5 +146,8 @@ probability or proof of provenance. It deliberately refuses to start without a h
 `ai_image_detector_model_selection_v1` and contain `experiment_dir`, `checkpoint_sha256`, and the
 required `selection_status`; the hash must match the selected H1-N checkpoint. This prevents the
 smoke-test or a legacy/partial checkpoint from being accidentally presented as a working detector.
+The predeclared research rule selects a representation from mean validation balanced accuracy over
+seeds 7, 17, and 42 (with documented tie-breaks), then uses its fixed seed-17 checkpoint; neither
+the internal test nor external scores may choose a more flattering checkpoint.
 It is intentionally local: serving the PyTorch model needs the same runtime as the research
 environment; this repository does not deploy it to a public web host.
