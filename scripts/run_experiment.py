@@ -16,7 +16,7 @@ from ai_image_detector.features import (
     RGBTransform,
     preprocessing_metadata,
 )
-from ai_image_detector.manifest import load_manifest
+from ai_image_detector.manifest import load_manifest, split_overlap_report
 from ai_image_detector.models import build_resnet50, trainable_parameter_count
 from ai_image_detector.reproducibility import (
     environment_snapshot,
@@ -38,6 +38,19 @@ from ai_image_detector.training import (
 
 MODEL_ARCHITECTURE = "resnet50"
 
+# `group_id` is retained alongside the derived `leakage_group`: the latter is the connected
+# component used for the grouped split, while the former is one of the original linking keys that
+# must also remain partition-disjoint. Checking both makes a malformed or stale component column
+# unable to silently bypass the launch gate.
+SPLIT_ISOLATION_REQUIRED_COLUMNS = (
+    "leakage_group",
+    "group_id",
+    "source_id",
+    "sha256",
+    "phash",
+)
+SPLIT_ISOLATION_OPTIONAL_COLUMNS = ("caption",)
+
 
 def require_fresh_output_dir(output_dir: Path) -> None:
     """Refuse to replace an archived training artifact with a notebook rerun."""
@@ -48,7 +61,82 @@ def require_fresh_output_dir(output_dir: Path) -> None:
         )
 
 
-def manifest_launch_metadata(manifest_path: Path, frame: pd.DataFrame) -> dict[str, object]:
+def _blank_identifier_mask(values: pd.Series) -> pd.Series:
+    """Return values that cannot be used to prove isolation for a required key."""
+    return values.isna() | values.astype(str).str.strip().eq("")
+
+
+def _overlap_description(key: str, report: pd.DataFrame) -> str:
+    """Give a bounded, actionable summary without writing an unaudited artifact."""
+    leaked_values = report[key].drop_duplicates().tolist()
+    examples: list[str] = []
+    for value in leaked_values[:3]:
+        splits = sorted(report.loc[report[key] == value, "split"].astype(str).unique())
+        examples.append(f"{value!r} in {splits}")
+    rendered_examples = "; ".join(examples)
+    return (
+        f"{key}: {len(leaked_values)} shared value(s) across {len(report)} row(s)"
+        f" (for example, {rendered_examples})"
+    )
+
+
+def validate_split_isolation(frame: pd.DataFrame) -> None:
+    """Fail closed unless every exact leakage key is isolated to one manifest split.
+
+    This guard deliberately checks the raw linking fields in addition to `leakage_group` before a
+    model or artifact directory can be written. Captions are optional in supported manifests, but
+    when supplied and nonblank, an exact repeated caption is still a split-isolation violation.
+    """
+    missing = [column for column in SPLIT_ISOLATION_REQUIRED_COLUMNS if column not in frame]
+    if missing:
+        raise ValueError(
+            "Cannot verify manifest split isolation because required column(s) are missing: "
+            f"{missing}. Use a leakage-audited grouped manifest with leakage_group, group_id, "
+            "source_id, sha256, and phash; refusing to begin training or write model artifacts."
+        )
+
+    blank_columns = [
+        column
+        for column in SPLIT_ISOLATION_REQUIRED_COLUMNS
+        if _blank_identifier_mask(frame[column]).any()
+    ]
+    if blank_columns:
+        raise ValueError(
+            "Cannot verify manifest split isolation because required key column(s) contain "
+            f"blank values: {blank_columns}. Repair or regenerate the grouped manifest; refusing "
+            "to begin training or write model artifacts."
+        )
+
+    keys = (*SPLIT_ISOLATION_REQUIRED_COLUMNS,)
+    keys += tuple(column for column in SPLIT_ISOLATION_OPTIONAL_COLUMNS if column in frame)
+    overlaps: dict[str, pd.DataFrame] = {}
+    for key in keys:
+        candidates = frame
+        if key in SPLIT_ISOLATION_OPTIONAL_COLUMNS:
+            candidates = frame.loc[~_blank_identifier_mask(frame[key])]
+        report = split_overlap_report(candidates, key)
+        if not report.empty:
+            overlaps[key] = report
+    if overlaps:
+        details = "; ".join(
+            _overlap_description(key, report) for key, report in overlaps.items()
+        )
+        raise ValueError(
+            "Manifest failed the split-isolation gate: cross-split overlap(s) detected in "
+            f"{details}. Rebuild the grouped manifest so every connected leakage component is "
+            "assigned to exactly one split; refusing to begin training or write model artifacts."
+        )
+
+
+def manifest_path_and_hash_at_launch(manifest_path: Path) -> tuple[Path, str]:
+    """Capture the immutable manifest identity before a long launch reads image pixels."""
+    resolved_path = manifest_path.resolve()
+    return resolved_path, sha256_file(resolved_path)
+
+
+def manifest_launch_metadata(
+    manifest_path: Path, frame: pd.DataFrame, manifest_sha256: str | None = None
+) -> dict[str, object]:
     """Describe the immutable input manifest used by an experiment launch."""
     split_counts = {
         str(split): int(count)
@@ -56,7 +144,9 @@ def manifest_launch_metadata(manifest_path: Path, frame: pd.DataFrame) -> dict[s
     }
     return {
         "resolved_path": str(manifest_path.resolve()),
-        "manifest_sha256": sha256_file(manifest_path),
+        "manifest_sha256": (
+            sha256_file(manifest_path) if manifest_sha256 is None else manifest_sha256
+        ),
         "row_counts": {"total": len(frame), "by_split": split_counts},
     }
 
@@ -160,13 +250,17 @@ def main() -> None:
     # repository/environment state simply because it finished after local files changed.
     environment_at_launch = environment_snapshot()
     launch_options = requested_launch_options(args)
+    manifest_path, manifest_sha256 = manifest_path_and_hash_at_launch(args.manifest)
     seed_everything(args.seed)
-    frame = load_manifest(args.manifest, check_paths=True)
-    manifest = manifest_launch_metadata(args.manifest, frame)
+    frame = load_manifest(manifest_path, check_paths=True)
+    if sha256_file(manifest_path) != manifest_sha256:
+        raise SystemExit("Manifest changed while the experiment launch was starting; rerun it.")
     required = {"train", "val", "test"}
     missing = required.difference(frame["split"])
     if missing:
         raise SystemExit(f"Manifest lacks required splits: {sorted(missing)}")
+    validate_split_isolation(frame)
+    manifest = manifest_launch_metadata(manifest_path, frame, manifest_sha256)
     preprocessing = preprocessing_metadata(args.preprocessing_protocol)
     train_sampler = args.train_sampler
     if train_sampler is None:

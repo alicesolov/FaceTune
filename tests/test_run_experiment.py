@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.util
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -23,6 +24,100 @@ def test_experiment_output_directory_refuses_overwrite(tmp_path: Path) -> None:
 
     with pytest.raises(FileExistsError, match="Refusing to overwrite"):
         run_experiment.require_fresh_output_dir(output_dir)
+
+
+def _isolated_manifest_frame(include_caption: bool = True) -> pd.DataFrame:
+    frame = pd.DataFrame(
+        {
+            "path": ["train.png", "val.png", "test.png"],
+            "label": [0, 1, 0],
+            "split": ["train", "val", "test"],
+            "generator": ["real", "sdxl", "real"],
+            "leakage_group": ["component-train", "component-val", "component-test"],
+            "group_id": ["group-train", "group-val", "group-test"],
+            "source_id": ["source-train", "source-val", "source-test"],
+            "sha256": ["sha-train", "sha-val", "sha-test"],
+            "phash": ["phash-train", "phash-val", "phash-test"],
+        }
+    )
+    if include_caption:
+        frame["caption"] = ["caption-train", "caption-val", "caption-test"]
+    return frame
+
+
+def test_split_isolation_gate_allows_clean_manifest_without_caption() -> None:
+    run_experiment.validate_split_isolation(_isolated_manifest_frame(include_caption=False))
+
+
+def test_split_isolation_gate_ignores_blank_optional_captions() -> None:
+    frame = _isolated_manifest_frame()
+    frame.loc[[0, 1], "caption"] = " "
+
+    run_experiment.validate_split_isolation(frame)
+
+
+@pytest.mark.parametrize(
+    "column",
+    ("leakage_group", "group_id", "source_id", "sha256", "phash", "caption"),
+)
+def test_split_isolation_gate_rejects_each_cross_split_exact_key(column: str) -> None:
+    frame = _isolated_manifest_frame()
+    frame.loc[1, column] = frame.loc[0, column]
+
+    with pytest.raises(ValueError, match="split-isolation gate") as error:
+        run_experiment.validate_split_isolation(frame)
+
+    assert column in str(error.value)
+    assert "refusing to begin training or write model artifacts" in str(error.value).lower()
+
+
+def test_split_isolation_gate_fails_closed_when_required_key_is_missing() -> None:
+    frame = _isolated_manifest_frame().drop(columns="sha256")
+
+    with pytest.raises(ValueError, match="Cannot verify manifest split isolation") as error:
+        run_experiment.validate_split_isolation(frame)
+
+    assert "sha256" in str(error.value)
+
+
+def test_split_isolation_gate_fails_closed_when_required_key_is_blank() -> None:
+    frame = _isolated_manifest_frame()
+    frame.loc[0, "phash"] = ""
+
+    with pytest.raises(ValueError, match="blank values") as error:
+        run_experiment.validate_split_isolation(frame)
+
+    assert "phash" in str(error.value)
+
+
+def test_main_blocks_leakage_before_creating_model_artifacts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    frame = _isolated_manifest_frame()
+    frame.loc[1, "leakage_group"] = frame.loc[0, "leakage_group"]
+    output_dir = tmp_path / "blocked-output"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "run_experiment.py",
+            "--manifest",
+            str(tmp_path / "invalid.csv"),
+            "--representation",
+            "rgb",
+            "--output-dir",
+            str(output_dir),
+        ],
+    )
+    (tmp_path / "invalid.csv").write_text("placeholder\n", encoding="utf-8")
+    monkeypatch.setattr(run_experiment, "environment_snapshot", dict)
+    monkeypatch.setattr(run_experiment, "seed_everything", lambda seed: None)
+    monkeypatch.setattr(run_experiment, "load_manifest", lambda *args, **kwargs: frame)
+
+    with pytest.raises(ValueError, match="split-isolation gate"):
+        run_experiment.main()
+
+    assert not output_dir.exists()
 
 
 def test_model_launch_metadata_records_manifest_and_requested_options(tmp_path: Path) -> None:
