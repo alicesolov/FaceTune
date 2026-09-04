@@ -66,6 +66,8 @@ def _preselection(tmp_path: Path) -> tuple[Path, list[dict[str, object]]]:
         for cell in list(dani_selection.CELL_DEFINITIONS)[1:]:
             candidates.append(_candidate(parent, cell, source_index))
             source_index += 1
+    candidates[0]["category"] = ""
+    candidates[0]["class_id"] = ""
     spec = source / dani_selection.SELECTION_SPEC_NAME
     catalog = source / dani_selection.SELECTION_CATALOG_NAME
     candidate_path = source / dani_selection.GEOMETRY_CANDIDATES_NAME
@@ -117,8 +119,8 @@ def _payload(candidate: dict[str, object], *, width: int) -> dict[str, object]:
                         "width": width,
                     },
                     "size": int(candidate["declared_size"]),
-                    "category": candidate["category"],
-                    "class_id": candidate["class_id"],
+                    "category": candidate["category"] or None,
+                    "class_id": candidate["class_id"] or None,
                     "model": candidate["model"],
                     "gen_type": candidate["gen_type"],
                     "reference": candidate["label"] == "0",
@@ -247,7 +249,7 @@ def test_geometry_scan_rejects_viewer_identity_mismatch(tmp_path: Path) -> None:
         payload["rows"][0]["row_idx"] = 999  # type: ignore[index]
         return payload
 
-    with pytest.raises(RuntimeError, match="row_idx mismatch"):
+    with pytest.raises(ValueError, match="row_idx mismatch"):
         dani_geometry.scan_geometry(
             source,
             tmp_path / "audit",

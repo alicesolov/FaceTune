@@ -210,8 +210,8 @@ def _validate_viewer_envelope(
     expected: dict[str, object] = {
         "index": source_index,
         "size": int(candidate["declared_size"]),
-        "category": candidate["category"],
-        "class_id": candidate["class_id"],
+        "category": candidate["category"] or None,
+        "class_id": candidate["class_id"] or None,
         "model": candidate["model"],
         "gen_type": candidate["gen_type"],
         "reference": candidate["label"] == "0",
@@ -331,12 +331,7 @@ def _fetch_range(
     for attempt in range(max_attempts):
         try:
             pacer.wait()
-            return validate_viewer_payload(
-                candidates,
-                requester(url, timeout),
-                request_offset=request_offset,
-                request_length=request_length,
-            )
+            payload = requester(url, timeout)
         except (OSError, TypeError, ValueError) as error:
             last_error = error
             if attempt + 1 < max_attempts:
@@ -346,6 +341,14 @@ def _fetch_range(
                 except ValueError:
                     server_delay = 0.0
                 sleep(max(server_delay, min(30.0, 1.0 * (2**attempt))))
+                continue
+            break
+        return validate_viewer_payload(
+            candidates,
+            payload,
+            request_offset=request_offset,
+            request_length=request_length,
+        )
     assert last_error is not None
     raise RuntimeError(
         f"Dataset Viewer geometry failed for range {request_offset}+{request_length} "
