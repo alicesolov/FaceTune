@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -11,12 +13,10 @@ from fastapi.responses import HTMLResponse
 from ai_image_detector.inference import ExperimentLoadError, ModelBundle
 from ai_image_detector.uploads import MAX_UPLOAD_BYTES, load_image
 
-app = FastAPI(title="AI Image Detector - research interface", docs_url=None, redoc_url=None)
 bundle: ModelBundle | None = None
 startup_error: str | None = None
 
 
-@app.on_event("startup")
 def load_selected_experiment() -> None:
     global bundle, startup_error
     selection_record = os.environ.get("AI_IMAGE_DETECTOR_SELECTION_RECORD")
@@ -30,6 +30,21 @@ def load_selected_experiment() -> None:
         bundle = ModelBundle.load_selected(selection_record)
     except ExperimentLoadError as error:
         startup_error = str(error)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Load the explicitly selected research model once when the local app starts."""
+    load_selected_experiment()
+    yield
+
+
+app = FastAPI(
+    title="AI Image Detector - research interface",
+    docs_url=None,
+    redoc_url=None,
+    lifespan=lifespan,
+)
 
 
 @app.get("/healthz")
