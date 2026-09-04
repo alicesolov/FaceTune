@@ -33,6 +33,11 @@ only for Hub/datasets locks and metadata streaming. The source catalog itself is
 trainable manifest, and a `--limit-shards` scout is explicitly ineligible for selection or
 training.
 
+`audit_highres_catalog.py` consumes only a **complete** scanner output and writes a separate
+derived audit. It verifies the source lock and catalog SHA-256 before reporting quality-gate,
+class-balance, source-stratum and metadata-duplicate counts; it never selects or materialises an
+image.
+
 Before materialisation, each source-catalog record must include at least:
 
 ```text

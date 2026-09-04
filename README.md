@@ -120,6 +120,17 @@ The scanner stores only temporary Hugging Face locks/cache under ignored
 `artifacts/cache/huggingface` by default. `--limit-shards N` is only a transport smoke test: its
 catalogue is automatically marked partial and cannot be used for selection or training.
 
+```bash
+# Offline audit: runs only after the full scanner wrote a complete provenance record.
+.venv/bin/python scripts/audit_highres_catalog.py \
+  data/processed/community_forensics_small_metadata_v1 \
+  --output-dir artifacts/audits/community_forensics_small_metadata_v1
+```
+
+The audit refuses a partial scan, a changed catalog, or raw image/prompt columns. It reports the
+inclusion-gate counts, class balance, source/model strata and metadata-level duplicate signals; it
+does not select or download an image.
+
 `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter training,
 model selection, threshold selection or augmentation selection. The preparation script does not
 download it automatically so the benchmark stays locked; RAISE states that its images are for
@@ -149,7 +160,7 @@ stage, not a throwaway helper:
 | Stage | Entry points |
 | --- | --- |
 | Acquire and audit internal data | `prepare_defactify.py`, `audit_manifest.py`, `make_grouped_split.py` |
-| Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py` |
+| Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py`, `audit_highres_catalog.py` |
 | Train and analyse internal models | `run_baselines.py`, `run_experiment.py`, `analyze_predictions.py`, `aggregate_experiments.py` |
 | Frozen validation only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_robustness.py` |
 
