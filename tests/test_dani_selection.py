@@ -27,7 +27,7 @@ def _lineage_row(
     row_index: int,
 ) -> dict[str, object]:
     label, model, gen_type = dani_selection.CELL_DEFINITIONS[cell]
-    source_index = f"{parent_id}-{cell}-{row_index}"
+    source_index = str(row_index)
     reference = label == "0"
     return {
         "locator": f"{dani.REPOSITORY_ID}@{REVISION}:{SHARD}:{row_index}",
@@ -186,8 +186,14 @@ def test_builds_caption_matched_license_filtered_parent_selection(tmp_path: Path
     assert report["counts"]["incomplete_required_cell_parent_count"] == 1
     assert report["counts"]["selected_parent_count"] == 2
     assert report["counts"]["selected_row_count"] == 10
-    assert report["eligibility"]["eligible_for_selected_byte_materialisation"] is True
+    assert report["counts"]["geometry_candidate_row_count"] == 11
+    assert report["eligibility"]["eligible_for_selected_geometry_scan"] is True
+    assert report["eligibility"]["eligible_for_selected_byte_materialisation"] is False
     assert report["eligibility"]["eligible_for_training"] is False
+    assert (output / dani_selection.GEOMETRY_CANDIDATES_NAME).is_file()
+    assert report["geometry_candidates_sha256"] == dani.sha256_file(
+        output / dani_selection.GEOMETRY_CANDIDATES_NAME
+    )
     assert {row["parent_coco_image_id"] for row in rows} == {"10", "20"}
     assert Counter(row["cell"] for row in rows) == {
         cell: 2 for cell in dani_selection.CELL_DEFINITIONS
@@ -206,6 +212,9 @@ def test_selection_is_byte_reproducible(tmp_path: Path) -> None:
     first_catalog = first / dani_selection.SELECTION_CATALOG_NAME
     second_catalog = second / dani_selection.SELECTION_CATALOG_NAME
     assert first_catalog.read_bytes() == second_catalog.read_bytes()
+    first_geometry = first / dani_selection.GEOMETRY_CANDIDATES_NAME
+    second_geometry = second / dani_selection.GEOMETRY_CANDIDATES_NAME
+    assert first_geometry.read_bytes() == second_geometry.read_bytes()
 
 
 def test_parent_split_is_stratified_reproducible_and_disjoint() -> None:

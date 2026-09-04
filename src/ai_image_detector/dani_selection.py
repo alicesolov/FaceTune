@@ -21,6 +21,7 @@ from . import dani, dani_lineage
 
 SELECTION_SCHEMA_VERSION: Final = "dani_highres_selection_v1"
 SELECTION_CATALOG_NAME: Final = "selection_catalog.csv"
+GEOMETRY_CANDIDATES_NAME: Final = "geometry_candidates.csv"
 SELECTION_SPEC_NAME: Final = "selection_spec.json"
 SELECTION_PROVENANCE_NAME: Final = "provenance.json"
 LINEAGE_AUDIT_SCHEMA: Final = "dani_lineage_mapping_audit_v1"
@@ -68,6 +69,12 @@ SELECTION_COLUMNS: Final = (
     "image_path_basename",
     "category",
     "class_id",
+)
+GEOMETRY_CANDIDATE_COLUMNS: Final = (
+    "geometry_candidate_id",
+    "provisional_selection_id",
+    "is_provisional_selection",
+    *SELECTION_COLUMNS[1:],
 )
 
 
@@ -417,6 +424,7 @@ def build_selection(
     parent_splits = assign_parent_splits(parent_license_ids, seed=seed)
 
     selected_rows: list[dict[str, object]] = []
+    geometry_rows: list[dict[str, object]] = []
     selection_ids: set[str] = set()
     locators: set[str] = set()
     for parent_id, (caption_id, rows_by_cell) in selected_by_parent.items():
@@ -440,37 +448,78 @@ def build_selection(
                 raise RuntimeError("Unexpected DANI selection ID collision")
             selection_ids.add(selection_id)
             label, model, gen_type = definition
-            selected_rows.append(
-                {
-                    "selection_id": selection_id,
-                    "split": split,
-                    "leakage_group": f"coco-parent:{parent_id}",
-                    "parent_coco_image_id": parent_id,
-                    "coco_caption_id": caption_id,
-                    **license_metadata,
-                    "cell": cell,
-                    "label": label,
-                    "generator": "real" if label == "0" else f"{model}:{gen_type}",
-                    "model": model,
-                    "gen_type": gen_type,
-                    "declared_size": row["declared_size"],
-                    "locator": locator,
-                    "repository_id": row["repository_id"],
-                    "revision": row["revision"],
-                    "shard_path": row["shard_path"],
-                    "row_index": row["row_index"],
-                    "source_index": row["source_index"],
-                    "source_index_hash": row["source_index_hash"],
-                    "image_path_basename": row["image_path_basename"],
-                    "category": row["category"],
-                    "class_id": row["class_id"],
-                }
+            base = {
+                "split": split,
+                "leakage_group": f"coco-parent:{parent_id}",
+                "parent_coco_image_id": parent_id,
+                "coco_caption_id": caption_id,
+                **license_metadata,
+                "cell": cell,
+                "label": label,
+                "generator": "real" if label == "0" else f"{model}:{gen_type}",
+                "model": model,
+                "gen_type": gen_type,
+                "declared_size": row["declared_size"],
+                "locator": locator,
+                "repository_id": row["repository_id"],
+                "revision": row["revision"],
+                "shard_path": row["shard_path"],
+                "row_index": row["row_index"],
+                "source_index": row["source_index"],
+                "source_index_hash": row["source_index_hash"],
+                "image_path_basename": row["image_path_basename"],
+                "category": row["category"],
+                "class_id": row["class_id"],
+            }
+            selected_rows.append({"selection_id": selection_id, **base})
+            candidate_rows = (
+                candidates[parent_id][caption_id][cell] if cell == "real_coco" else [row]
             )
+            for candidate in candidate_rows:
+                candidate_locator = candidate["locator"]
+                candidate_base = {
+                    **base,
+                    "declared_size": candidate["declared_size"],
+                    "locator": candidate_locator,
+                    "repository_id": candidate["repository_id"],
+                    "revision": candidate["revision"],
+                    "shard_path": candidate["shard_path"],
+                    "row_index": candidate["row_index"],
+                    "source_index": candidate["source_index"],
+                    "source_index_hash": candidate["source_index_hash"],
+                    "image_path_basename": candidate["image_path_basename"],
+                    "category": candidate["category"],
+                    "class_id": candidate["class_id"],
+                }
+                geometry_rows.append(
+                    {
+                        "geometry_candidate_id": "dani-geometry:"
+                        + stable_hash(
+                            SELECTION_SCHEMA_VERSION,
+                            seed,
+                            parent_id,
+                            caption_id,
+                            cell,
+                            candidate_locator,
+                        ),
+                        "provisional_selection_id": selection_id,
+                        "is_provisional_selection": candidate_locator == locator,
+                        **candidate_base,
+                    }
+                )
     selected_rows.sort(
         key=lambda row: (
             SPLIT_ORDER[str(row["split"])],
             int(row["parent_coco_image_id"]),
             list(CELL_DEFINITIONS).index(str(row["cell"])),
+        )
+    )
+    geometry_rows.sort(
+        key=lambda row: (
+            SPLIT_ORDER[str(row["split"])],
+            int(row["parent_coco_image_id"]),
+            list(CELL_DEFINITIONS).index(str(row["cell"])),
+            int(row["source_index"]),
         )
     )
     if len(selected_rows) != len(selected_by_parent) * len(CELL_DEFINITIONS):
@@ -506,7 +555,7 @@ def build_selection(
         "schema_version": SELECTION_SCHEMA_VERSION,
         "created_at_utc": created,
         "selection_seed": seed,
-        "selection_kind": "metadata_only_frozen_selection_not_materialised_manifest",
+        "selection_kind": "metadata_only_frozen_parent_caption_preselection_pending_geometry",
         "declared_source_size": DECLARED_SOURCE_SIZE,
         "allowed_coco_license_ids": list(ALLOWED_COCO_LICENSE_IDS),
         "required_caption_matched_cells": {
@@ -537,6 +586,7 @@ def build_selection(
         "created_at_utc": created,
         "selection_spec": SELECTION_SPEC_NAME,
         "selection_catalog": SELECTION_CATALOG_NAME,
+        "geometry_candidates": GEOMETRY_CANDIDATES_NAME,
         "image_bytes_requested": False,
         "image_bytes_read": False,
         "counts": {
@@ -545,6 +595,7 @@ def build_selection(
             "incomplete_required_cell_parent_count": len(incomplete_parents),
             "selected_parent_count": len(selected_by_parent),
             "selected_row_count": len(selected_rows),
+            "geometry_candidate_row_count": len(geometry_rows),
             "selected_parent_count_by_split": dict(sorted(parent_split_counts.items())),
             "selected_row_count_by_split": dict(sorted(row_split_counts.items())),
             "selected_parent_count_by_license_id": {
@@ -559,14 +610,16 @@ def build_selection(
             },
         },
         "eligibility": {
-            "eligible_for_selected_byte_materialisation": True,
+            "eligible_for_selected_geometry_scan": True,
+            "eligible_for_selected_byte_materialisation": False,
             "eligible_for_split_assignment": True,
             "parent_group_disjoint_split_frozen": True,
             "eligible_for_training": False,
             "eligible_for_model_selection": False,
             "remaining_blocker": (
-                "Selected bytes must pass geometry, mode/container, corruption, exact/perceptual "
-                "duplicate, cross-split leakage, and shortcut audits."
+                "Exact-row Viewer geometry must prove 1024 x 1024 for one real candidate and all "
+                "synthetic cells per parent before byte materialisation; selected bytes then need "
+                "mode/container, corruption, duplicate, leakage, and shortcut audits."
             ),
         },
     }
@@ -576,7 +629,18 @@ def build_selection(
         writer = csv.DictWriter(handle, fieldnames=SELECTION_COLUMNS, extrasaction="raise")
         writer.writeheader()
         writer.writerows(selected_rows)
+    with (destination / GEOMETRY_CANDIDATES_NAME).open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(
+            handle,
+            fieldnames=GEOMETRY_CANDIDATE_COLUMNS,
+            extrasaction="raise",
+        )
+        writer.writeheader()
+        writer.writerows(geometry_rows)
     provenance["selection_spec_sha256"] = dani.sha256_file(destination / SELECTION_SPEC_NAME)
     provenance["selection_catalog_sha256"] = dani.sha256_file(destination / SELECTION_CATALOG_NAME)
+    provenance["geometry_candidates_sha256"] = dani.sha256_file(
+        destination / GEOMETRY_CANDIDATES_NAME
+    )
     _write_json(destination / SELECTION_PROVENANCE_NAME, provenance)
     return provenance
