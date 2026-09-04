@@ -51,6 +51,10 @@ Run them in that order. Each notebook either creates a versioned artifact or rea
 an earlier stage. No notebook contains invented metrics; empty result tables remain empty until a
 run produces them.
 
+The current [evidence-bound coursework draft](reports/draft/ai_image_detector_coursework_draft.md)
+is the companion narrative: it labels observed results, diagnostic controls, and pending work
+separately rather than filling future tables in advance.
+
 ## H1-N experiment commands
 
 The full commands are intentionally explicit. They use the controlled protocol by default; the
@@ -84,8 +88,10 @@ The initial train/validation/internal-test source is
 protocol was written; record the source revision and do not redistribute raw images from this
 repository. `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter
 training, model selection, threshold selection or augmentation selection. The preparation script
-does not download it automatically because RAISE-1k requires acceptance of its research licence.
-See [data/README.md](data/README.md) and [docs/RESEARCH_PROTOCOL.md](docs/RESEARCH_PROTOCOL.md).
+does not download it automatically so the benchmark stays locked; RAISE states that its images are
+for non-commercial research and educational use. See the [official RAISE terms]
+(https://loki.disi.unitn.it/RAISE/download.html), [data/README.md](data/README.md) and
+[docs/RESEARCH_PROTOCOL.md](docs/RESEARCH_PROTOCOL.md).
 
 ## Repository map
 
