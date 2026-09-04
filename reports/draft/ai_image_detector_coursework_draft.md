@@ -226,10 +226,10 @@ split, group identifier, a local row identifier (`source_id`), caption, image ge
 file size, SHA-256 hash, and perceptual hash. The current Defactify preparation falls back to an
 identifier of the form `split:index` when the source record has no ID, so this field is not treated
 as provenance evidence or as a leakage link. Raw source files and image pixels are excluded from
-version control. Images are decoded to canonical RGB PNG for controlled processing; this removes
-EXIF and container metadata from the neural-model input, but does not erase all pixel-level
-properties of the source corpus. License and source information must remain attached to raw data
-and are not asserted to be commercially redistributable by this project.
+version control. Images first have their EXIF orientation normalised and are then decoded to RGB;
+other EXIF and container fields are not supplied to the neural-model input, but this does not erase
+all pixel-level properties of the source corpus. License and source information must remain attached
+to raw data and are not asserted to be commercially redistributable by this project.
 
 ## 3.2 Audit of the official partition
 
@@ -315,11 +315,14 @@ amended H1-N protocol was locked before the neural runs.
 
 For every pixel-based model, preprocessing is fixed as follows:
 
-1. Decode the file as RGB and ignore EXIF and original-container metadata.
+1. Normalise EXIF orientation, decode the file as RGB, and do not pass other EXIF or
+   original-container fields to the model.
 2. Crop a square without padding. H1-N **neural** training uses a seed-controlled random square
-   crop; neural validation, internal test, robustness, and external evaluation use a deterministic
-   centre crop. The completed radial logistic baseline extracts one fixed feature vector per image,
-   so it uses the deterministic centre crop on train, validation, and test.
+   crop keyed by the experiment seed, epoch, and stable `source_id`, followed by a train-only
+   horizontal flip with probability 0.5. Neural validation, internal test, robustness, and external
+   evaluation use a deterministic centre crop. The completed radial logistic baseline extracts one
+   fixed feature vector per image, so it uses the deterministic centre crop and no augmentation on
+   train, validation, and test.
 3. Resize the crop once to 128 x 128 pixels using LANCZOS interpolation. The source corpus has a
    minimum short side of 128 pixels, so this step does not require upsampling.
 4. Supply this same standardised raster to the RGB model, or compute FFT magnitude only from that
@@ -352,6 +355,12 @@ real image and one synthetic sibling, selecting synthetic generators uniformly f
 siblings. This avoids allowing very large groups or the five-to-one AI/real prevalence to dominate
 the training signal. The predeclared seeds are 7, 17, and 42; no best seed may be selected from the
 test set.
+
+Before any neural model is constructed, the launcher fail-closes if the grouped manifest has a
+cross-split exact overlap in `leakage_group`, raw `group_id`, `source_id`, SHA-256, pHash, or a
+non-empty caption. It also records the manifest hash, preprocessing contract, architecture,
+initialisation choice, augmentation flag, sampler, device, and launch environment. Seed aggregation
+requires these records to agree and pins the SHA-256 of the fixed seed-17 candidate checkpoint.
 
 ## 4.4 Selection, metrics, and uncertainty
 
@@ -490,6 +499,13 @@ generator-relation categories, because H2 is pending.
 The correct current conclusion is therefore modest: the amended baseline supports continuing the
 controlled comparison, while the large D0 shortcut and generator variation demonstrate why a
 single internal score would be insufficient.
+
+The controlled neural crop and flip sequence is portable across a relocation of the repository
+because it is keyed by the stable manifest `source_id`, not an absolute file path. Nevertheless,
+Apple MPS is recorded as the training device and PyTorch requests deterministic algorithms with a
+warning fallback; this supports repeatable protocol execution but does not justify a claim that
+independent neural reruns are bitwise identical. Near-duplicates that are not connected by the
+declared `group_id`, exact SHA-256, or exact pHash remain a residual limitation of the split audit.
 
 ## 5.5 Pending results table
 
