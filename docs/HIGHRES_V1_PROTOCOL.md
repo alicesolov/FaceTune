@@ -1,8 +1,8 @@
 # HighRes-v1: protocol for a higher-resolution image corpus
 
-**Status:** source-selection protocol for the primary study, amended after the first full source
-audit. The primary HighRes-v1 corpus is not yet materialised and this file contains no
-high-resolution model result.
+**Status:** DANI primary corpus materialised, container-normalised and integrity-audited. Model
+hypotheses are frozen below before validation-only training. This file contains no high-resolution
+neural result yet.
 
 ## Why this is a separate study
 
@@ -147,6 +147,51 @@ batch 64 sustained about 43 images/s with roughly 20.4 GB Metal driver allocatio
 about 25.6 GB with essentially the same throughput. Initial training will therefore use batch 64,
 leaving headroom below the requested 25 GB budget. This is a hardware measurement, not a model
 quality result.
+
+## Frozen DANI corpus and predeclared experiments
+
+The selected DANI corpus contains 7,410 exact 1024 x 1024 rasters from 1,482 COCO parent groups:
+one real COCO image and four generated conditions (DALL-E 3 T2I, SDXL I2I, SDXL T2I and SDXL
+TI2I) per parent. Whole parents are assigned to train/validation/test, giving 5,185/1,115/1,110
+rows. The original-byte audit found no exact duplicate, cross-label exact duplicate,
+cross-parent pHash link at Hamming distance at most four, or cross-split component. It did find a
+container/mode support difference: real rows were JPEG with RGB or L mode, whereas generated rows
+included JPEG and PNG and were RGB.
+
+The originals remain immutable. A derived corpus applies EXIF orientation and converts every
+decoded 1024 x 1024 raster to RGB, then stores it as PNG without resizing. Its manifest SHA-256 is
+`a6043658fe0a35611b39c43dfd25d3fdec3a42f70794b364ff8e1407601df52a`; the successful training
+manifest SHA-256 is
+`3b88920920add51ef8c55b225817448b759c05a8d5bfc1cee11bc6befced2855`. The repeated audit again
+found zero exact duplicates, cross-label exact duplicates, cross-parent near-pHash links and
+cross-split components. All 7,410 derived files are RGB PNG. Source-to-derived byte and pixel
+lineage is retained locally; neither image corpus is committed to Git.
+
+The acquisition-metadata logistic control is a declared shortcut diagnostic, never a detector.
+Using geometry, encoded size, container and colour mode, its validation ROC-AUC was 0.713427 on
+the immutable original files and 0.537373 after canonicalisation. These validation values may
+motivate robustness analysis, but cannot choose a neural representation or threshold; internal
+test was not read.
+
+The following decisions are frozen before neural training:
+
+1. A one-epoch pretrained RGB ResNet-50 run with seed 7 is a throughput/stability pilot only. It
+   may inspect training and validation but not internal test, and it is excluded from result tables.
+2. The practical RGB series uses ImageNet-pretrained ResNet-50, seeds 7, 17 and 42, at most 15
+   epochs, early-stopping patience 4, learning rate 1e-4, batch 64, paired-component binary
+   sampling by COCO parent, and the `highres_square_crop_384_v1` raster. Validation alone selects
+   each checkpoint and threshold. All seeds are reported; the numerically best seed is not chosen.
+3. The representation hypothesis compares RGB and FFT-magnitude ResNet-50 from random
+   initialisation under the same seeds, sampler, epoch cap, patience, learning rate and 384-pixel
+   raster. This equal-initialisation comparison is distinct from the practical pretrained RGB
+   series. The deterministic radial-FFT logistic model is an interpretable pixel baseline.
+4. Aggregate validation balanced accuracy across seeds is the primary selection statistic;
+   validation ROC-AUC, macro-F1, class recall, calibration and per-generator slices are secondary.
+   Ties within 0.01 balanced-accuracy point prefer RGB as the simpler deployable representation.
+5. Internal test remains unopened until every declared validation run and aggregation artifact is
+   complete. One frozen representative checkpoint per selected series is then evaluated once with
+   its validation-selected threshold. External data remain locked until that internal analysis is
+   written; no internal or external score may trigger a seed substitution or hyperparameter change.
 
 ## Evaluation discipline
 
