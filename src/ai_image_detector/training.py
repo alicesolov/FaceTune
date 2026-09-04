@@ -257,6 +257,7 @@ def fit(
     # combining the two mechanisms would make the predeclared comparison harder to interpret.
     criterion = nn.CrossEntropyLoss()
     history: list[dict[str, float | int]] = []
+    history_path = output / "history.csv"
     best_loss = float("inf")
     no_improvement = 0
     checkpoint = output / "best_model.pt"
@@ -293,6 +294,16 @@ def fit(
                 "val_log_loss": val_loss_proxy,
             }
         )
+        # Keep the single canonical history artifact useful while a long local run is active.
+        # A partially completed file is intentionally valid CSV and is overwritten in-place on
+        # every epoch, so it does not create a second logging format or affect model selection.
+        pd.DataFrame(history).to_csv(history_path, index=False)
+        print(
+            f"epoch {epoch}/{config.epochs}: "
+            f"train_loss={history[-1]['train_loss']:.6f}, "
+            f"val_log_loss={val_loss_proxy:.6f}",
+            flush=True,
+        )
         if val_loss_proxy < best_loss:
             best_loss = val_loss_proxy
             no_improvement = 0
@@ -310,7 +321,7 @@ def fit(
     validation_metrics = binary_metrics(
         val_predictions["label"].to_numpy(), val_predictions["ai_score"].to_numpy(), threshold
     )
-    pd.DataFrame(history).to_csv(output / "history.csv", index=False)
+    pd.DataFrame(history).to_csv(history_path, index=False)
     val_predictions.assign(threshold=threshold).to_csv(
         output / "validation_predictions.csv", index=False
     )
