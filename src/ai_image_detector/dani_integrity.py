@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from . import dani, dani_materialize, dani_selection
+from . import dani, dani_canonical, dani_materialize, dani_selection
 
 INTEGRITY_SCHEMA_VERSION: Final = "dani_highres_integrity_v1"
 SUMMARY_NAME: Final = "summary.json"
@@ -166,12 +166,15 @@ def _load_materialized(materialized_dir: Path) -> tuple[list[dict[str, str]], di
     if not manifest_path.is_file() or not provenance_path.is_file():
         raise FileNotFoundError("Completed DANI materialisation manifest/provenance is missing")
     provenance = _read_json(provenance_path)
-    if provenance.get("schema_version") != dani_materialize.MATERIALIZATION_SCHEMA_VERSION:
+    schema_version = provenance.get("schema_version")
+    if schema_version == dani_canonical.CANONICAL_SCHEMA_VERSION:
+        dani_canonical.validate_canonical_provenance(provenance)
+    elif schema_version != dani_materialize.MATERIALIZATION_SCHEMA_VERSION:
         raise ValueError("DANI materialisation has an unsupported schema_version")
     if provenance.get("materialized_manifest_sha256") != dani.sha256_file(manifest_path):
         raise ValueError("DANI materialised manifest differs from provenance")
     eligibility = provenance.get("eligibility")
-    if (
+    if schema_version == dani_materialize.MATERIALIZATION_SCHEMA_VERSION and (
         not isinstance(eligibility, dict)
         or eligibility.get("all_selected_rows_materialized") is not True
         or eligibility.get("all_decoded_geometry_exact_1024") is not True
