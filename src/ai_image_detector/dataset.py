@@ -27,6 +27,9 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
         self.transform = transform
         self.seed = seed
         self.epoch = 0
+        self._uses_contextual_rng = bool(getattr(self.transform, "uses_contextual_rng", False))
+        if self.seed is not None and self._uses_contextual_rng:
+            self._validate_stable_manifest_identities()
 
     def __len__(self) -> int:
         return len(self.frame)
@@ -35,11 +38,44 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
         """Set the deterministic augmentation epoch before a training loader is iterated."""
         self.epoch = epoch
 
+    def _validate_stable_manifest_identities(self) -> None:
+        """Require the portable manifest identity used by controlled train-time RNGs."""
+        if "source_id" not in self.frame.columns:
+            raise ValueError(
+                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "column as its stable manifest identity."
+            )
+        source_ids = self.frame["source_id"]
+        invalid = source_ids.isna() | source_ids.astype("string").str.strip().eq("")
+        invalid_count = int(invalid.sum())
+        if invalid_count:
+            raise ValueError(
+                "Controlled H1-N stochastic training requires non-empty 'source_id' values "
+                f"for every row; found {invalid_count} missing or empty value(s)."
+            )
+
+    @staticmethod
+    def _stable_manifest_identity(row: pd.Series) -> str:
+        """Return the source ID used in a portable train-time augmentation key."""
+        if "source_id" not in row.index:
+            raise ValueError(
+                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "column as its stable manifest identity."
+            )
+        source_id = row["source_id"]
+        if pd.isna(source_id) or not str(source_id).strip():
+            raise ValueError(
+                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "value as its stable manifest identity."
+            )
+        return str(source_id).strip()
+
     def _sample_rng(self, row: pd.Series) -> random.Random:
-        """Derive a stable RNG independent of worker ordering or Python's salted ``hash``."""
+        """Derive a portable RNG independent of paths, worker ordering, or salted ``hash``."""
         if self.seed is None:
             raise RuntimeError("A deterministic sample RNG was requested without a seed")
-        key = f"{self.seed}|{self.epoch}|{row['path']}|{row.get('source_id', '')}".encode()
+        source_id = self._stable_manifest_identity(row)
+        key = f"{self.seed}|{self.epoch}|{source_id}".encode()
         value = int.from_bytes(hashlib.blake2b(key, digest_size=8).digest(), byteorder="little")
         return random.Random(value)
 
@@ -62,7 +98,7 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
             "group_id": str(row.get("group_id", "")),
             "leakage_group": str(leakage_group),
         }
-        if self.seed is not None and bool(getattr(self.transform, "uses_contextual_rng", False)):
+        if self.seed is not None and self._uses_contextual_rng:
             tensor = self.transform(image, rng=self._sample_rng(row))
         else:
             tensor = self.transform(image)

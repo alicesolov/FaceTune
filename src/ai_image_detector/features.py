@@ -31,6 +31,7 @@ CONTROLLED_PREPROCESSING_PROTOCOL: Final = "h1n_square_crop_128_v1"
 CONTROLLED_PREPROCESSING_VERSION: Final = "1.0"
 CONTROLLED_IMAGE_SIZE: Final = 128
 LEGACY_IMAGE_SIZE: Final = 256
+CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY: Final = 0.5
 
 
 def _validate_protocol(protocol: str) -> str:
@@ -55,8 +56,16 @@ def preprocessing_metadata(protocol: str, image_size: int | None = None) -> dict
             "image_size": CONTROLLED_IMAGE_SIZE,
             "train_crop": "seeded_random_square_crop",
             "eval_crop": "center_square_crop",
+            "crop_policy": "seeded_random_square_train_center_square_eval",
             "resize": "single_square_lanczos",
             "fft_input": "common_raster_only",
+            "neural_train_augmentation": {
+                "horizontal_flip": {
+                    "probability": CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY,
+                    "applies_to": "train_only",
+                    "order": "after_common_raster",
+                }
+            },
         }
     size = LEGACY_IMAGE_SIZE if image_size is None else image_size
     return {
@@ -265,7 +274,7 @@ def _apply_train_augmentation(
     if not train:
         return image
     generator = rng if rng is not None else random
-    if generator.random() < 0.5:
+    if generator.random() < CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY:
         image = ImageOps.mirror(image)
     if not robust_augmentation:
         return image

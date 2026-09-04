@@ -47,3 +47,5 @@ def test_controlled_radial_metadata_records_deterministic_crop_for_all_splits() 
     assert metadata["train_crop"] == "center_square_crop"
     assert metadata["eval_crop"] == "center_square_crop"
     assert metadata["crop_policy"] == "deterministic_center_square_all_splits"
+    assert metadata["augmentation"] == "none"
+    assert "neural_train_augmentation" not in metadata

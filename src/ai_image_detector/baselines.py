@@ -33,6 +33,10 @@ def radial_preprocessing_metadata(protocol: str) -> dict[str, object]:
         metadata["train_crop"] = "center_square_crop"
         metadata["eval_crop"] = "center_square_crop"
         metadata["crop_policy"] = "deterministic_center_square_all_splits"
+        # The neural-only random flip belongs to the matched RGB/FFT training protocol. This
+        # fixed-feature baseline uses no augmentation on any split, so retaining that nested
+        # metadata here would falsely describe its fitted input.
+        metadata.pop("neural_train_augmentation", None)
         metadata["augmentation"] = "none"
     return metadata
 

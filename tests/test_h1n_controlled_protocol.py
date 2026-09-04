@@ -5,6 +5,7 @@ from collections import Counter
 
 import numpy as np
 import pandas as pd
+import pytest
 import torch
 from PIL import Image, ImageDraw
 from torch.utils.data import DataLoader
@@ -15,6 +16,7 @@ from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
     FFTTransform,
     RGBTransform,
+    preprocessing_metadata,
     source_normalized_rasterize,
 )
 from ai_image_detector.training import PairedGroupSampler, predict
@@ -85,6 +87,93 @@ def test_dataset_seeded_crop_and_group_metadata_are_reproducible(tmp_path) -> No
     assert torch.equal(first_tensor, second_tensor)
     assert metadata["group_id"] == "legacy-group-1"
     assert metadata["leakage_group"] == "leakage-group-1"
+
+
+def test_dataset_seeded_crop_uses_source_id_not_absolute_path(tmp_path) -> None:
+    width, height = 1_000, 100
+    columns = np.arange(width, dtype=np.uint16)
+    pixels = np.empty((height, width, 3), dtype=np.uint8)
+    pixels[..., 0] = columns % 251
+    pixels[..., 1] = (columns // 251) % 251
+    pixels[..., 2] = columns // (251 * 251)
+    image = Image.fromarray(pixels, mode="RGB")
+    first_path = tmp_path / "first" / "wide.png"
+    second_path = tmp_path / "second" / "wide.png"
+    first_path.parent.mkdir()
+    second_path.parent.mkdir()
+    image.save(first_path)
+    image.save(second_path)
+    transform = RGBTransform(train=True, preprocessing_protocol=CONTROLLED_PREPROCESSING_PROTOCOL)
+
+    def tensor_for(path, source_id: str) -> torch.Tensor:
+        frame = pd.DataFrame(
+            {
+                "path": [str(path)],
+                "label": [0],
+                "generator": ["real"],
+                "split": ["train"],
+                "source_id": [source_id],
+            }
+        )
+        dataset = ManifestImageDataset(frame, transform, seed=91)
+        dataset.set_epoch(3)
+        return dataset[0][0]
+
+    assert torch.equal(
+        tensor_for(first_path, "stable-source"), tensor_for(second_path, "stable-source")
+    )
+    assert not torch.equal(
+        tensor_for(first_path, "stable-source-a"), tensor_for(first_path, "stable-source-b")
+    )
+
+
+@pytest.mark.parametrize("source_id", [None, "   "])
+def test_dataset_controlled_rng_rejects_missing_or_empty_source_id(tmp_path, source_id) -> None:
+    path = tmp_path / "image.png"
+    Image.new("RGB", (32, 32), color="blue").save(path)
+    frame = pd.DataFrame(
+        {
+            "path": [str(path)],
+            "label": [0],
+            "generator": ["real"],
+            "split": ["train"],
+            "source_id": [source_id],
+        }
+    )
+    transform = RGBTransform(train=True, preprocessing_protocol=CONTROLLED_PREPROCESSING_PROTOCOL)
+
+    with pytest.raises(ValueError, match="non-empty 'source_id'"):
+        ManifestImageDataset(frame, transform, seed=91)
+
+
+def test_dataset_controlled_rng_rejects_absent_source_id_column(tmp_path) -> None:
+    path = tmp_path / "image.png"
+    Image.new("RGB", (32, 32), color="blue").save(path)
+    frame = pd.DataFrame(
+        {
+            "path": [str(path)],
+            "label": [0],
+            "generator": ["real"],
+            "split": ["train"],
+        }
+    )
+    transform = RGBTransform(train=True, preprocessing_protocol=CONTROLLED_PREPROCESSING_PROTOCOL)
+
+    with pytest.raises(ValueError, match="non-empty 'source_id'"):
+        ManifestImageDataset(frame, transform, seed=91)
+
+
+def test_controlled_metadata_records_train_only_stochastic_flip() -> None:
+    metadata = preprocessing_metadata(CONTROLLED_PREPROCESSING_PROTOCOL)
+
+    assert metadata["crop_policy"] == "seeded_random_square_train_center_square_eval"
+    assert metadata["neural_train_augmentation"] == {
+        "horizontal_flip": {
+            "probability": 0.5,
+            "applies_to": "train_only",
+            "order": "after_common_raster",
+        }
+    }
 
 
 def test_prediction_output_preserves_group_identifiers(tmp_path) -> None:
