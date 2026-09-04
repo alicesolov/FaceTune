@@ -20,6 +20,7 @@ from ai_image_detector.baselines import (
 from ai_image_detector.canonical_integrity import validate_defactify_exploratory_corpus
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    DANI_HIGHRES_PREPROCESSING_PROTOCOL,
     HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
 )
@@ -261,6 +262,7 @@ def main() -> None:
         "--preprocessing-protocol",
         choices=(
             CONTROLLED_PREPROCESSING_PROTOCOL,
+            DANI_HIGHRES_PREPROCESSING_PROTOCOL,
             HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
             LEGACY_PREPROCESSING_PROTOCOL,
         ),

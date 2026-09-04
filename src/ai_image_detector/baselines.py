@@ -14,8 +14,10 @@ from tqdm.auto import tqdm
 
 from .features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    DANI_HIGHRES_PREPROCESSING_PROTOCOL,
     HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
+    dani_highres_rasterize,
     preprocessing_metadata,
     radial_power_spectrum,
     require_canonical_highres_raster,
@@ -31,11 +33,17 @@ def radial_preprocessing_metadata(protocol: str) -> dict[str, object]:
     split and must not inherit the neural train-crop metadata unchanged.
     """
     metadata = preprocessing_metadata(protocol)
-    if protocol in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}:
+    if protocol in {
+        CONTROLLED_PREPROCESSING_PROTOCOL,
+        DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+        HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+    }:
         if protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
             metadata["train_crop"] = "center_square_crop"
             metadata["eval_crop"] = "center_square_crop"
             metadata["crop_policy"] = "deterministic_center_square_all_splits"
+        elif protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL:
+            metadata["crop_policy"] = "exact_square_source_all_splits"
         else:
             metadata["crop_policy"] = "precanonicalized_raster_all_splits"
         # The neural-only random flip belongs to the matched RGB/FFT training protocol. This
@@ -63,6 +71,8 @@ def radial_features(
         with Image.open(Path(path)) as image:
             if preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
                 image = source_normalized_rasterize(image, size=image_size, train=False)
+            elif preprocessing_protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL:
+                image = dani_highres_rasterize(image, size=image_size)
             elif preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
                 image = require_canonical_highres_raster(image, size=image_size)
             else:
