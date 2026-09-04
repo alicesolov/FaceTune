@@ -19,6 +19,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--max-attempts", type=int, default=3)
     parser.add_argument("--min-request-interval", type=float, default=0.2)
+    parser.add_argument("--max-viewer-length", type=int, default=100)
     return parser.parse_args()
 
 
@@ -37,6 +38,7 @@ def main() -> None:
         timeout=args.timeout,
         max_attempts=args.max_attempts,
         min_request_interval=args.min_request_interval,
+        max_viewer_length=args.max_viewer_length,
         progress=progress,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))

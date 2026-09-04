@@ -31,6 +31,8 @@ DEFAULT_VIEWER_SPLIT: Final = "train"
 MAX_RESPONSE_BYTES: Final = 1_000_000
 OBSERVED_COLUMNS: Final = (
     *dani_selection.GEOMETRY_CANDIDATE_COLUMNS,
+    "viewer_request_offset",
+    "viewer_request_length",
     "observed_width",
     "observed_height",
     "observed_square",
@@ -174,33 +176,32 @@ def _validate_preselection(preselection_dir: Path) -> tuple[list[dict[str, str]]
     return candidates, hashes
 
 
-def viewer_row_url(endpoint: str, source_index: int) -> str:
+def viewer_rows_url(endpoint: str, offset: int, length: int) -> str:
     parsed = urlparse(endpoint)
     if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
         raise ValueError("Dataset Viewer endpoint must be a query-free HTTPS URL")
+    if offset < 0 or not 1 <= length <= 100:
+        raise ValueError("Dataset Viewer offset must be nonnegative and length must be 1..100")
     query = urlencode(
         {
             "dataset": dani.REPOSITORY_ID,
             "config": DEFAULT_VIEWER_CONFIG,
             "split": DEFAULT_VIEWER_SPLIT,
-            "offset": source_index,
-            "length": 1,
+            "offset": offset,
+            "length": length,
         }
     )
     return f"{endpoint}?{query}"
 
 
-def validate_viewer_payload(
-    candidate: Mapping[str, str], payload: Mapping[str, object]
+def _validate_viewer_envelope(
+    candidate: Mapping[str, str],
+    envelope: Mapping[str, object],
+    *,
+    request_offset: int,
+    request_length: int,
 ) -> dict[str, object]:
-    """Validate one exact Viewer response and discard its temporary image asset URL."""
     source_index = int(candidate["source_index"])
-    rows = payload.get("rows")
-    if not isinstance(rows, list) or len(rows) != 1 or not isinstance(rows[0], dict):
-        raise ValueError(
-            f"Viewer did not return exactly one object for source_index {source_index}"
-        )
-    envelope = rows[0]
     if envelope.get("row_idx") != source_index:
         raise ValueError(f"Viewer row_idx mismatch for source_index {source_index}")
     row = envelope.get("row")
@@ -244,10 +245,10 @@ def validate_viewer_payload(
         raise ValueError(f"Viewer asset provenance mismatch for source_index {source_index}")
     if envelope.get("truncated_cells") not in ([], None):
         raise ValueError(f"Viewer truncated the exact row for source_index {source_index}")
-    if payload.get("partial") is not False:
-        raise ValueError(f"Viewer response is partial for source_index {source_index}")
     return {
         **candidate,
+        "viewer_request_offset": request_offset,
+        "viewer_request_length": request_length,
         "observed_width": width,
         "observed_height": height,
         "observed_square": width == height,
@@ -256,8 +257,65 @@ def validate_viewer_payload(
     }
 
 
-def _fetch_one(
-    candidate: Mapping[str, str],
+def validate_viewer_payload(
+    candidates: Sequence[Mapping[str, str]],
+    payload: Mapping[str, object],
+    *,
+    request_offset: int,
+    request_length: int,
+) -> list[dict[str, object]]:
+    """Validate one contiguous Viewer range and retain observations for candidates only."""
+    rows = payload.get("rows")
+    if not isinstance(rows, list) or len(rows) != request_length:
+        raise ValueError(
+            f"Viewer returned {len(rows) if isinstance(rows, list) else 'invalid'} rows for "
+            f"requested range {request_offset}+{request_length}"
+        )
+    by_index: dict[int, Mapping[str, object]] = {}
+    for position, envelope in enumerate(rows):
+        if not isinstance(envelope, dict):
+            raise TypeError("Viewer range contains a non-object row")
+        expected_index = request_offset + position
+        if envelope.get("row_idx") != expected_index:
+            raise ValueError(f"Viewer range row_idx mismatch at {expected_index}")
+        by_index[expected_index] = envelope
+    if payload.get("partial") is not False:
+        raise ValueError(f"Viewer response is partial for range {request_offset}+{request_length}")
+    results: list[dict[str, object]] = []
+    for candidate in candidates:
+        source_index = int(candidate["source_index"])
+        envelope = by_index.get(source_index)
+        if envelope is None:
+            raise ValueError(f"Viewer range omitted candidate source_index {source_index}")
+        results.append(
+            _validate_viewer_envelope(
+                candidate,
+                envelope,
+                request_offset=request_offset,
+                request_length=request_length,
+            )
+        )
+    return results
+
+
+def _candidate_ranges(
+    candidates: Sequence[Mapping[str, str]], max_length: int
+) -> list[list[Mapping[str, str]]]:
+    ordered = sorted(candidates, key=lambda row: int(row["source_index"]))
+    ranges: list[list[Mapping[str, str]]] = []
+    cursor = 0
+    while cursor < len(ordered):
+        start = int(ordered[cursor]["source_index"])
+        end = cursor + 1
+        while end < len(ordered) and int(ordered[end]["source_index"]) < start + max_length:
+            end += 1
+        ranges.append(ordered[cursor:end])
+        cursor = end
+    return ranges
+
+
+def _fetch_range(
+    candidates: Sequence[Mapping[str, str]],
     *,
     endpoint: str,
     timeout: float,
@@ -265,13 +323,20 @@ def _fetch_one(
     requester: JsonRequester,
     sleep: Callable[[float], None],
     pacer: _RequestPacer,
-) -> dict[str, object]:
-    url = viewer_row_url(endpoint, int(candidate["source_index"]))
+) -> list[dict[str, object]]:
+    request_offset = int(candidates[0]["source_index"])
+    request_length = int(candidates[-1]["source_index"]) - request_offset + 1
+    url = viewer_rows_url(endpoint, request_offset, request_length)
     last_error: Exception | None = None
     for attempt in range(max_attempts):
         try:
             pacer.wait()
-            return validate_viewer_payload(candidate, requester(url, timeout))
+            return validate_viewer_payload(
+                candidates,
+                requester(url, timeout),
+                request_offset=request_offset,
+                request_length=request_length,
+            )
         except (OSError, TypeError, ValueError) as error:
             last_error = error
             if attempt + 1 < max_attempts:
@@ -283,14 +348,12 @@ def _fetch_one(
                 sleep(max(server_delay, min(30.0, 1.0 * (2**attempt))))
     assert last_error is not None
     raise RuntimeError(
-        f"Dataset Viewer geometry failed for source_index {candidate['source_index']} "
+        f"Dataset Viewer geometry failed for range {request_offset}+{request_length} "
         f"after {max_attempts} attempt(s): {last_error}"
     ) from last_error
 
 
-def _read_completed_prefix(
-    path: Path, candidates: Sequence[Mapping[str, str]]
-) -> list[dict[str, str]]:
+def _read_observations(path: Path, candidates: Sequence[Mapping[str, str]]) -> list[dict[str, str]]:
     if not path.is_file():
         return []
     with path.open(encoding="utf-8", newline="") as handle:
@@ -300,11 +363,20 @@ def _read_completed_prefix(
         rows = [dict(row) for row in reader]
     if len(rows) > len(candidates):
         raise ValueError("Existing geometry catalogue exceeds the frozen candidate plan")
+    candidate_by_id = {row["geometry_candidate_id"]: row for row in candidates}
+    seen: set[str] = set()
     for index, row in enumerate(rows):
-        candidate = candidates[index]
+        candidate_id = row["geometry_candidate_id"]
+        candidate = candidate_by_id.get(candidate_id)
+        if candidate is None or candidate_id in seen:
+            raise ValueError(f"Existing geometry row {index + 2} is unknown or duplicated")
+        seen.add(candidate_id)
         for field in dani_selection.GEOMETRY_CANDIDATE_COLUMNS:
             if row[field] != candidate[field]:
-                raise ValueError(f"Existing geometry row {index + 2} is not a candidate prefix")
+                raise ValueError(f"Existing geometry row {index + 2} differs from its candidate")
+        request_offset = int(row["viewer_request_offset"])
+        request_length = int(row["viewer_request_length"])
+        source_index = int(row["source_index"])
         width = int(row["observed_width"])
         height = int(row["observed_height"])
         expected_flags = {
@@ -313,7 +385,10 @@ def _read_completed_prefix(
             "viewer_revision_verified": "True",
         }
         if (
-            width <= 0
+            request_offset < 0
+            or not 1 <= request_length <= 100
+            or not request_offset <= source_index < request_offset + request_length
+            or width <= 0
             or height <= 0
             or any(row[key] != value for key, value in expected_flags.items())
         ):
@@ -329,6 +404,9 @@ def _summarise(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     by_parent: defaultdict[str, list[Mapping[str, object]]] = defaultdict(list)
     for row in rows:
         by_parent[str(row["parent_coco_image_id"])].append(row)
+    request_ranges = {
+        (int(row["viewer_request_offset"]), int(row["viewer_request_length"])) for row in rows
+    }
     bad_parent_count = 0
     for parent_rows in by_parent.values():
         real_1024 = sum(
@@ -347,6 +425,10 @@ def _summarise(rows: Sequence[Mapping[str, object]]) -> dict[str, object]:
     return {
         "candidate_row_count": len(rows),
         "parent_count": len(by_parent),
+        "viewer_request_count": len(request_ranges),
+        "viewer_metadata_row_count_requested": sum(length for _, length in request_ranges),
+        "unselected_metadata_row_count_returned": sum(length for _, length in request_ranges)
+        - len(rows),
         "resolution_counts": dict(sorted(resolution_counts.items())),
         "cell_resolution_counts": {
             f"{cell}:{resolution}": count
@@ -367,6 +449,7 @@ def scan_geometry(
     timeout: float = 60.0,
     max_attempts: int = 3,
     min_request_interval: float = 0.2,
+    max_viewer_length: int = 100,
     requester: JsonRequester | None = None,
     sleep: Callable[[float], None] = time.sleep,
     progress: ProgressCallback | None = None,
@@ -379,10 +462,11 @@ def scan_geometry(
         or timeout <= 0
         or max_attempts <= 0
         or min_request_interval < 0
+        or not 1 <= max_viewer_length <= 100
     ):
         raise ValueError(
             "workers, chunk_size, timeout, and max_attempts must be positive; "
-            "min_request_interval must be nonnegative"
+            "min_request_interval must be nonnegative; max_viewer_length must be 1..100"
         )
     source = Path(preselection_dir)
     destination = Path(output_dir)
@@ -396,26 +480,32 @@ def scan_geometry(
     if partial_path.exists() and final_path.exists():
         raise ValueError("Geometry audit cannot contain both partial and final catalogues")
     working_path = final_path if final_path.exists() else partial_path
-    completed = _read_completed_prefix(working_path, candidates)
+    completed = _read_observations(working_path, candidates)
     if final_path.exists() and len(completed) != len(candidates):
         raise ValueError("Final geometry catalogue is incomplete")
 
     request_json = _default_request_json if requester is None else requester
     pacer = _RequestPacer(min_request_interval)
     if not final_path.exists():
+        completed_ids = {row["geometry_candidate_id"] for row in completed}
+        missing = [
+            candidate
+            for candidate in candidates
+            if candidate["geometry_candidate_id"] not in completed_ids
+        ]
+        ranges = _candidate_ranges(missing, max_viewer_length)
         mode = "a" if partial_path.exists() else "w"
         with partial_path.open(mode, encoding="utf-8", newline="") as handle:
             writer = csv.DictWriter(handle, fieldnames=OBSERVED_COLUMNS, extrasaction="raise")
             if mode == "w":
                 writer.writeheader()
-            start = len(completed)
             with ThreadPoolExecutor(max_workers=workers) as executor:
-                for chunk_start in range(start, len(candidates), chunk_size):
-                    chunk = candidates[chunk_start : chunk_start + chunk_size]
+                for chunk_start in range(0, len(ranges), chunk_size):
+                    chunk = ranges[chunk_start : chunk_start + chunk_size]
                     futures = [
                         executor.submit(
-                            _fetch_one,
-                            candidate,
+                            _fetch_range,
+                            candidate_range,
                             endpoint=endpoint,
                             timeout=timeout,
                             max_attempts=max_attempts,
@@ -423,15 +513,23 @@ def scan_geometry(
                             sleep=sleep,
                             pacer=pacer,
                         )
-                        for candidate in chunk
+                        for candidate_range in chunk
                     ]
-                    results = [future.result() for future in futures]
+                    results = [row for future in futures for row in future.result()]
                     writer.writerows(results)
                     handle.flush()
                     completed.extend(results)  # type: ignore[arg-type]
                     if progress is not None:
                         progress(len(completed), len(candidates))
-        partial_path.replace(final_path)
+        observations = _read_observations(partial_path, candidates)
+        by_id = {row["geometry_candidate_id"]: row for row in observations}
+        if len(by_id) != len(candidates):
+            raise AssertionError("DANI range scan did not observe the complete candidate plan")
+        with final_path.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=OBSERVED_COLUMNS, extrasaction="raise")
+            writer.writeheader()
+            writer.writerows(by_id[row["geometry_candidate_id"]] for row in candidates)
+        partial_path.unlink()
 
     hashes_after = {
         "selection_spec_sha256": dani.sha256_file(source / dani_selection.SELECTION_SPEC_NAME),
@@ -447,7 +545,7 @@ def scan_geometry(
     }
     if hashes_after != input_hashes:
         raise RuntimeError("DANI preselection changed while geometry was being scanned")
-    final_rows = _read_completed_prefix(final_path, candidates)
+    final_rows = _read_observations(final_path, candidates)
     if len(final_rows) != len(candidates):
         raise AssertionError("DANI geometry audit did not consume the complete candidate plan")
     summary = _summarise(final_rows)
@@ -462,7 +560,9 @@ def scan_geometry(
             "revision_verified_in_each_asset_locator": dani.PINNED_REVISION,
             "config": DEFAULT_VIEWER_CONFIG,
             "split": DEFAULT_VIEWER_SPLIT,
-            "length": 1,
+            "length": f"1..{max_viewer_length}",
+            "contiguous_range_rows_validated": True,
+            "only_frozen_candidate_observations_persisted": True,
         },
         "input_hashes": input_hashes,
         "geometry_catalog": GEOMETRY_CATALOG_NAME,

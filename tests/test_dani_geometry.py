@@ -136,9 +136,15 @@ def _requester(candidates: list[dict[str, object]], widths: dict[int, int]):
     def request(url: str, timeout: float) -> dict[str, object]:
         assert timeout > 0
         query = parse_qs(urlparse(url).query)
-        assert query["length"] == ["1"]
-        index = int(query["offset"][0])
-        return _payload(by_index[index], width=widths[index])
+        offset = int(query["offset"][0])
+        length = int(query["length"][0])
+        rows = []
+        for index in range(offset, offset + length):
+            if index in by_index:
+                rows.append(_payload(by_index[index], width=widths[index])["rows"][0])
+            else:
+                rows.append({"row_idx": index, "row": {}, "truncated_cells": []})
+        return {"rows": rows, "partial": False}
 
     return request
 
@@ -195,7 +201,7 @@ def test_geometry_gate_fails_when_a_synthetic_cell_is_low_resolution(tmp_path: P
     assert report["eligibility"]["eligible_for_selection_finalisation"] is False
 
 
-def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
+def test_geometry_scan_resumes_from_completed_observations(tmp_path: Path) -> None:
     source, candidates = _preselection(tmp_path)
     widths = {int(row["source_index"]): 1024 for row in candidates}
     calls: Counter[int] = Counter()
@@ -208,7 +214,7 @@ def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
         return _payload(candidates[index], width=widths[index])
 
     output = tmp_path / "audit"
-    with pytest.raises(RuntimeError, match="source_index 1"):
+    with pytest.raises(RuntimeError, match=r"range 1\+1"):
         dani_geometry.scan_geometry(
             source,
             output,
@@ -216,6 +222,7 @@ def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
             chunk_size=1,
             max_attempts=1,
             min_request_interval=0,
+            max_viewer_length=1,
             requester=flaky,
         )
     assert calls[0] == 1
@@ -227,6 +234,7 @@ def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
         chunk_size=1,
         requester=_requester(candidates, widths),
         min_request_interval=0,
+        max_viewer_length=1,
     )
     assert calls[0] == 1
 
@@ -247,5 +255,6 @@ def test_geometry_scan_rejects_viewer_identity_mismatch(tmp_path: Path) -> None:
             chunk_size=1,
             max_attempts=1,
             min_request_interval=0,
+            max_viewer_length=1,
             requester=wrong_index,
         )
