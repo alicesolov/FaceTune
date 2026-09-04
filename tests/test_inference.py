@@ -88,6 +88,11 @@ def test_selected_model_is_hash_pinned_and_rejects_legacy_runs(tmp_path, monkeyp
 
     assert ModelBundle.load_selected(record, device_name="cpu") is selected
 
+    selected.checkpoint_sha256 = "c" * 64
+    with pytest.raises(ExperimentLoadError, match="hash"):
+        ModelBundle.load_selected(record, device_name="cpu")
+
+    selected.checkpoint_sha256 = checksum
     selected.preprocessing = {"protocol": "legacy_resize_v1"}
     with pytest.raises(ExperimentLoadError, match="H1-N"):
         ModelBundle.load_selected(record, device_name="cpu")
