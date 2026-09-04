@@ -625,6 +625,7 @@ which is preferable to an inflated claim based on a source shortcut.
 | Internal-manifest SHA-256 | `695a1442badc6a22ec4d3d4324592df5aa781f6d83e33e3323e8d1fb6d758225` |
 | Split construction seed | 20260829 |
 | Baseline seed | 7 |
+| Launch revision | `76c6683d8fffcc11a63dd5acd889d04873da1f12` |
 | Representation | 64-bin radial log-power spectrum from the common raster |
 | Raster protocol | `h1n_square_crop_128_v1`: deterministic centre-square crop on train, validation, and test for this fixed-feature radial baseline; one 128 x 128 LANCZOS resize; FFT only after common rasterisation |
 | Classifier | StandardScaler followed by class-balanced logistic regression (`max_iter=2000`) |
@@ -638,12 +639,13 @@ The underlying machine-readable result files are `internal_test_metrics.json`,
 `analysis/per_generator_metrics.csv` in the experiment directory. The audit artifacts for the
 grouped split are in `artifacts/defactify_grouped_audit/`.
 
-**Provisional provenance note.** The historical `v1` `run.json` was written before the
-baseline-specific metadata correction and labels its train crop as `seeded_random_square_crop`.
-The executed feature code used `train=False`, i.e. a deterministic centre crop on every split; the
-current source records that policy correctly. The baseline will be rerun into a fresh artifact before
-this draft is promoted to a final reproducible report. Until then, the score is an observed working
-result with a disclosed metadata inconsistency, not a final archival result.
+**Canonical-provenance note.** The artifact above was regenerated from a clean launch at the
+recorded revision. Its `run.json` records the manifest hash and split counts, the launch environment,
+and the deterministic centre-crop policy for every split; its analysis uses 2,000 group-level
+bootstrap resamples with seed `20260829`. The older artifact whose metadata had incorrectly labelled
+the train crop has been retained only for audit at
+`artifacts/pilots/historical_radial_metadata_mismatch_seed7`. Its prediction CSV is byte-identical to
+the canonical rerun, but it is not cited as evidence in this report.
 
 # Appendix B. Interpretation checklist for any future result
 
