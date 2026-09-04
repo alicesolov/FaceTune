@@ -22,7 +22,7 @@ def test_file_metadata_control_has_expected_shape_and_scores(tmp_path) -> None:
         Image.new("RGB", size, color=(index * 40, 0, 0)).save(path)
         paths.append(str(path))
     frame = pd.DataFrame({"path": paths, "label": [0, 0, 1, 1]})
-    assert image_file_features(frame).shape == (4, 4)
+    assert image_file_features(frame).shape == (4, 12)
     model = fit_file_metadata_logistic(frame, seed=3)
     scores = file_metadata_predict(model, frame)
     assert scores.shape == (4,)

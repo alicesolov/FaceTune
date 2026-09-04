@@ -104,21 +104,31 @@ def radial_predict(
 def image_file_features(frame: pd.DataFrame) -> np.ndarray:
     """Return deliberately non-semantic file controls, never inputs to an image model.
 
-    Files are canonical RGB PNGs. Consequently `png_bytes` is not original file metadata, but it
-    can reveal compression/content correlations introduced by a source corpus. A strong score here
-    is a dataset-bias warning, not a useful detector result.
+    Geometry, encoded size, container and colour mode can expose acquisition-pipeline shortcuts.
+    A strong score here is a dataset-bias warning, not detector evidence. Fixed one-hot columns
+    keep the feature schema stable even when a split does not contain every observed category.
     """
-    rows: list[tuple[float, float, float, float]] = []
+    rows: list[tuple[float, ...]] = []
     for path in frame["path"]:
         image_path = Path(path)
         with Image.open(image_path) as image:
             width, height = image.size
+            image_format = (image.format or "OTHER").upper()
+            image_mode = image.mode.upper()
         rows.append(
             (
                 np.log1p(width),
                 np.log1p(height),
                 width / max(height, 1),
                 np.log1p(image_path.stat().st_size),
+                float(image_format == "JPEG"),
+                float(image_format == "PNG"),
+                float(image_format == "WEBP"),
+                float(image_format not in {"JPEG", "PNG", "WEBP"}),
+                float(image_mode == "RGB"),
+                float(image_mode == "L"),
+                float(image_mode == "RGBA"),
+                float(image_mode not in {"RGB", "L", "RGBA"}),
             )
         )
     return np.asarray(rows, dtype=np.float32)

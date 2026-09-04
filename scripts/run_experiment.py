@@ -183,6 +183,7 @@ def requested_launch_options(args: argparse.Namespace) -> dict[str, object]:
         "from_scratch": bool(args.from_scratch),
         "robust_augmentation": bool(args.robust_augmentation),
         "device": args.device,
+        "skip_internal_test": bool(args.skip_internal_test),
     }
 
 
@@ -295,6 +296,11 @@ def main() -> None:
     parser.add_argument("--device", default="auto")
     parser.add_argument("--from-scratch", action="store_true")
     parser.add_argument("--robust-augmentation", action="store_true")
+    parser.add_argument(
+        "--skip-internal-test",
+        action="store_true",
+        help="Train and select on validation only; do not construct or evaluate the test loader.",
+    )
     parser.add_argument(
         "--preprocessing-protocol",
         choices=(
@@ -420,8 +426,16 @@ def main() -> None:
     val_loader = make_loader(
         frame[frame.split == "val"], eval_transform, args.batch_size, train=False, seed=args.seed
     )
-    test_loader = make_loader(
-        frame[frame.split == "test"], eval_transform, args.batch_size, train=False, seed=args.seed
+    test_loader = (
+        None
+        if args.skip_internal_test
+        else make_loader(
+            frame[frame.split == "test"],
+            eval_transform,
+            args.batch_size,
+            train=False,
+            seed=args.seed,
+        )
     )
     device = get_device(args.device)
     model = build_resnet50(pretrained=not args.from_scratch)
@@ -452,10 +466,13 @@ def main() -> None:
         args.output_dir,
         environment_at_launch=environment_at_launch,
     )
-    _, metrics = evaluate_and_save(
-        model, test_loader, device, threshold, args.output_dir, "internal_test"
-    )
-    print(metrics)
+    if test_loader is None:
+        print({"status": "validation_only_complete", "internal_test_evaluated": False})
+    else:
+        _, metrics = evaluate_and_save(
+            model, test_loader, device, threshold, args.output_dir, "internal_test"
+        )
+        print(metrics)
 
 
 if __name__ == "__main__":

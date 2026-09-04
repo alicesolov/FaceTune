@@ -31,6 +31,7 @@ def test_baseline_launch_metadata_preserves_existing_fields_and_input_trace(tmp_
         seed=17,
         only=None,
         preprocessing_protocol="h1n_square_crop_128_v1",
+        skip_internal_test=True,
     )
     resolved_path, launch_sha256 = run_baselines.manifest_path_and_hash_at_launch(manifest_path)
     requested = run_baselines.requested_launch_options(args)
@@ -62,11 +63,13 @@ def test_baseline_launch_metadata_preserves_existing_fields_and_input_trace(tmp_
             "seed": 17,
             "selected_baseline": None,
             "preprocessing_protocol": "h1n_square_crop_128_v1",
+            "skip_internal_test": True,
         },
         "resolved": {
             "seed": 17,
             "selected_baselines": ["radial_fft_logistic", "file_metadata_control"],
             "preprocessing_protocol": "h1n_square_crop_128_v1",
+            "skip_internal_test": True,
         },
     }
 
@@ -127,11 +130,13 @@ def test_run_one_writes_launch_provenance_to_its_existing_run_json(
         "seed": 17,
         "selected_baseline": "radial_fft_logistic",
         "preprocessing_protocol": "h1n_square_crop_128_v1",
+        "skip_internal_test": False,
     }
     resolved = {
         "seed": 17,
         "selected_baselines": ["radial_fft_logistic"],
         "preprocessing_protocol": "h1n_square_crop_128_v1",
+        "skip_internal_test": False,
     }
     output = tmp_path / "radial"
 
@@ -155,3 +160,39 @@ def test_run_one_writes_launch_provenance_to_its_existing_run_json(
     assert run["launch_options"] == {"requested": requested, "resolved": resolved}
     assert run["name"] == "radial_fft_logistic"
     assert run["threshold"] == 0.5
+
+
+def test_run_one_can_leave_internal_test_untouched(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(
+        run_baselines, "fit_file_metadata_logistic", lambda *args, **kwargs: object()
+    )
+    monkeypatch.setattr(
+        run_baselines,
+        "file_metadata_predict",
+        lambda model, frame: np.linspace(0.2, 0.8, len(frame)),
+    )
+    frame = pd.DataFrame(
+        {
+            "path": ["a.png", "b.png"],
+            "label": [0, 1],
+            "generator": ["real", "synthetic"],
+            "split": ["val", "val"],
+        }
+    )
+    output = tmp_path / "metadata"
+    run_baselines.run_one(
+        "file_metadata_control",
+        frame,
+        frame,
+        frame,
+        output,
+        7,
+        "h1n_square_crop_128_v1",
+        {},
+        {},
+        {},
+        {},
+        evaluate_internal_test=False,
+    )
+    assert (output / "validation_selection_metrics.json").is_file()
+    assert not (output / "internal_test_metrics.json").exists()

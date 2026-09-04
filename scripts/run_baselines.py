@@ -113,6 +113,7 @@ def requested_launch_options(args: argparse.Namespace) -> dict[str, object]:
         "seed": int(args.seed),
         "selected_baseline": args.only,
         "preprocessing_protocol": args.preprocessing_protocol,
+        "skip_internal_test": bool(args.skip_internal_test),
     }
 
 
@@ -124,6 +125,7 @@ def resolved_launch_options(
         "seed": requested_options["seed"],
         "selected_baselines": list(baselines),
         "preprocessing_protocol": requested_options["preprocessing_protocol"],
+        "skip_internal_test": requested_options["skip_internal_test"],
     }
 
 
@@ -173,6 +175,7 @@ def run_one(
     requested_options: dict[str, object],
     resolved_options: dict[str, object],
     canonical_corpus_integrity: dict[str, object] | None = None,
+    evaluate_internal_test: bool = True,
 ) -> None:
     if name == "radial_fft_logistic":
         model = fit_radial_logistic(train, seed=seed, preprocessing_protocol=preprocessing_protocol)
@@ -188,20 +191,20 @@ def run_one(
         raise ValueError(name)
     validation_scores = predict(model, val)
     threshold = choose_threshold(val.label.to_numpy(), validation_scores)
-    test_scores = predict(model, test)
-    metrics = binary_metrics(test.label.to_numpy(), test_scores, threshold)
     output.mkdir(parents=True, exist_ok=True)
-    prediction_columns: dict[str, object] = {
-        "path": test.path,
-        "label": test.label,
-        "generator": test.generator,
-        "split": test.split,
-        "ai_score": test_scores,
+    validation_metrics = binary_metrics(val.label.to_numpy(), validation_scores, threshold)
+    validation_columns: dict[str, object] = {
+        "path": val.path,
+        "label": val.label,
+        "generator": val.generator,
+        "split": val.split,
+        "ai_score": validation_scores,
     }
     for column in ("source_id", "group_id", "leakage_group"):
-        if column in test:
-            prediction_columns[column] = test[column]
-    pd.DataFrame(prediction_columns).to_csv(output / "internal_test_predictions.csv", index=False)
+        if column in val:
+            validation_columns[column] = val[column]
+    pd.DataFrame(validation_columns).to_csv(output / "validation_predictions.csv", index=False)
+    save_json(validation_metrics, output / "validation_selection_metrics.json")
     save_json(
         build_baseline_run_metadata(
             name=name,
@@ -216,10 +219,31 @@ def run_one(
         ),
         output / "run.json",
     )
-    (output / "internal_test_metrics.json").write_text(
-        json.dumps(metrics, indent=2) + "\n", encoding="utf-8"
-    )
-    print(json.dumps({"name": name, **metrics}, indent=2))
+    if evaluate_internal_test:
+        test_scores = predict(model, test)
+        metrics = binary_metrics(test.label.to_numpy(), test_scores, threshold)
+        prediction_columns: dict[str, object] = {
+            "path": test.path,
+            "label": test.label,
+            "generator": test.generator,
+            "split": test.split,
+            "ai_score": test_scores,
+        }
+        for column in ("source_id", "group_id", "leakage_group"):
+            if column in test:
+                prediction_columns[column] = test[column]
+        pd.DataFrame(prediction_columns).to_csv(
+            output / "internal_test_predictions.csv", index=False
+        )
+        save_json(metrics, output / "internal_test_metrics.json")
+        print(json.dumps({"name": name, "evaluation": "internal_test", **metrics}, indent=2))
+    else:
+        print(
+            json.dumps(
+                {"name": name, "evaluation": "validation_selection", **validation_metrics},
+                indent=2,
+            )
+        )
 
 
 def main() -> None:
@@ -228,6 +252,11 @@ def main() -> None:
     parser.add_argument("--output-root", type=Path, default=Path("artifacts"))
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--only", choices=("radial_fft_logistic", "file_metadata_control"))
+    parser.add_argument(
+        "--skip-internal-test",
+        action="store_true",
+        help="Fit and select the threshold on validation, leaving internal test untouched.",
+    )
     parser.add_argument(
         "--preprocessing-protocol",
         choices=(
@@ -277,6 +306,7 @@ def main() -> None:
             requested_options,
             resolved_options,
             canonical_corpus_integrity,
+            evaluate_internal_test=not args.skip_internal_test,
         )
 
 

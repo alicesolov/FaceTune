@@ -232,6 +232,7 @@ def test_model_launch_metadata_records_manifest_and_requested_options(tmp_path: 
         from_scratch=True,
         robust_augmentation=True,
         device="auto",
+        skip_internal_test=True,
     )
     preprocessing = {"protocol": "h1n_square_crop_128_v1", "version": "1.0", "image_size": 128}
     sampler = {"choice": "paired_group_balanced_v1", "group_column": "leakage_group"}
@@ -266,6 +267,7 @@ def test_model_launch_metadata_records_manifest_and_requested_options(tmp_path: 
             "from_scratch": True,
             "robust_augmentation": True,
             "device": "auto",
+            "skip_internal_test": True,
         },
         "resolved": {
             "train_sampler": "paired_group_balanced_v1",
