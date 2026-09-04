@@ -159,6 +159,7 @@ def test_exact_geometry_scan_passes_without_persisting_asset_urls(tmp_path: Path
         workers=2,
         chunk_size=3,
         requester=_requester(candidates, widths),
+        min_request_interval=0,
         now=lambda: datetime(2026, 8, 30, tzinfo=UTC),
     )
 
@@ -187,6 +188,7 @@ def test_geometry_gate_fails_when_a_synthetic_cell_is_low_resolution(tmp_path: P
         source,
         tmp_path / "audit",
         requester=_requester(candidates, widths),
+        min_request_interval=0,
     )
 
     assert report["summary"]["parent_count_failing_exact_geometry_gate"] == 1
@@ -213,6 +215,7 @@ def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
             workers=1,
             chunk_size=1,
             max_attempts=1,
+            min_request_interval=0,
             requester=flaky,
         )
     assert calls[0] == 1
@@ -223,6 +226,7 @@ def test_geometry_scan_resumes_from_completed_prefix(tmp_path: Path) -> None:
         workers=1,
         chunk_size=1,
         requester=_requester(candidates, widths),
+        min_request_interval=0,
     )
     assert calls[0] == 1
 
@@ -242,5 +246,6 @@ def test_geometry_scan_rejects_viewer_identity_mismatch(tmp_path: Path) -> None:
             workers=1,
             chunk_size=1,
             max_attempts=1,
+            min_request_interval=0,
             requester=wrong_index,
         )

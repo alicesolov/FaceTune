@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import threading
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Mapping, Sequence
@@ -39,6 +40,26 @@ OBSERVED_COLUMNS: Final = (
 
 JsonRequester = Callable[[str, float], Mapping[str, object]]
 ProgressCallback = Callable[[int, int], None]
+
+
+class _RequestPacer:
+    """Serialize request starts to a shared minimum interval across worker threads."""
+
+    def __init__(self, interval: float) -> None:
+        self.interval = interval
+        self._lock = threading.Lock()
+        self._next_start = 0.0
+
+    def wait(self) -> None:
+        if self.interval <= 0:
+            return
+        with self._lock:
+            now = time.monotonic()
+            delay = self._next_start - now
+            if delay > 0:
+                time.sleep(delay)
+                now = time.monotonic()
+            self._next_start = now + self.interval
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -243,16 +264,23 @@ def _fetch_one(
     max_attempts: int,
     requester: JsonRequester,
     sleep: Callable[[float], None],
+    pacer: _RequestPacer,
 ) -> dict[str, object]:
     url = viewer_row_url(endpoint, int(candidate["source_index"]))
     last_error: Exception | None = None
     for attempt in range(max_attempts):
         try:
+            pacer.wait()
             return validate_viewer_payload(candidate, requester(url, timeout))
         except (OSError, TypeError, ValueError) as error:
             last_error = error
             if attempt + 1 < max_attempts:
-                sleep(min(4.0, 0.5 * (2**attempt)))
+                retry_after = getattr(error, "headers", {}).get("Retry-After")
+                try:
+                    server_delay = float(retry_after) if retry_after is not None else 0.0
+                except ValueError:
+                    server_delay = 0.0
+                sleep(max(server_delay, min(30.0, 1.0 * (2**attempt))))
     assert last_error is not None
     raise RuntimeError(
         f"Dataset Viewer geometry failed for source_index {candidate['source_index']} "
@@ -338,14 +366,24 @@ def scan_geometry(
     chunk_size: int = 256,
     timeout: float = 60.0,
     max_attempts: int = 3,
+    min_request_interval: float = 0.2,
     requester: JsonRequester | None = None,
     sleep: Callable[[float], None] = time.sleep,
     progress: ProgressCallback | None = None,
     now: Callable[[], datetime] | None = None,
 ) -> dict[str, object]:
     """Run or resume the exact-row audit, writing final provenance only after completion."""
-    if workers <= 0 or chunk_size <= 0 or timeout <= 0 or max_attempts <= 0:
-        raise ValueError("workers, chunk_size, timeout, and max_attempts must be positive")
+    if (
+        workers <= 0
+        or chunk_size <= 0
+        or timeout <= 0
+        or max_attempts <= 0
+        or min_request_interval < 0
+    ):
+        raise ValueError(
+            "workers, chunk_size, timeout, and max_attempts must be positive; "
+            "min_request_interval must be nonnegative"
+        )
     source = Path(preselection_dir)
     destination = Path(output_dir)
     candidates, input_hashes = _validate_preselection(source)
@@ -363,6 +401,7 @@ def scan_geometry(
         raise ValueError("Final geometry catalogue is incomplete")
 
     request_json = _default_request_json if requester is None else requester
+    pacer = _RequestPacer(min_request_interval)
     if not final_path.exists():
         mode = "a" if partial_path.exists() else "w"
         with partial_path.open(mode, encoding="utf-8", newline="") as handle:
@@ -382,6 +421,7 @@ def scan_geometry(
                             max_attempts=max_attempts,
                             requester=request_json,
                             sleep=sleep,
+                            pacer=pacer,
                         )
                         for candidate in chunk
                     ]

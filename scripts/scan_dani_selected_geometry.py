@@ -18,6 +18,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--chunk-size", type=int, default=256)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument("--max-attempts", type=int, default=3)
+    parser.add_argument("--min-request-interval", type=float, default=0.2)
     return parser.parse_args()
 
 
@@ -35,6 +36,7 @@ def main() -> None:
         chunk_size=args.chunk_size,
         timeout=args.timeout,
         max_attempts=args.max_attempts,
+        min_request_interval=args.min_request_interval,
         progress=progress,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
