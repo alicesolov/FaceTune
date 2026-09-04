@@ -164,18 +164,31 @@ The audit refuses a partial scan, a changed catalog, or raw image/prompt columns
 inclusion-gate counts, class balance, source/model strata and metadata-level duplicate signals; it
 does not select or download an image.
 
-The active descriptive source audit is [DANI](https://huggingface.co/datasets/Renyang/DANI), pinned
-to revision 870e29fcdc13c405fae35442899e9ba1da11691d. Its scanner reads exactly seven non-binary
-fields and creates a locked catalogue without requesting the image field. The public schema has no
-documented COCO parent/caption group, so even a complete DANI catalogue is deliberately blocked from
-internal selection, split assignment and training until a separate mapping audit proves that group.
+The descriptive source audit for [DANI](https://huggingface.co/datasets/Renyang/DANI) is pinned to
+revision 870e29fcdc13c405fae35442899e9ba1da11691d. The first scanner reads exactly seven non-binary
+fields. A second path-only scan reconstructs candidate COCO parent/caption identifiers without
+requesting `image.bytes`. The offline lineage audit joins every one of 540,258 catalogue rows to an
+exact pair in the D-Judge mapping pinned at revision
+6b877a12df94ddc4f68abb54db7912dc966d17e4: 5,000 parents and 25,014 caption pairs are covered, and
+every verified key crosses both labels. This proves the path-derived keys against that mapping; it
+does not yet prove official COCO identity or make DANI trainable.
 
     .venv/bin/python scripts/scan_dani_metadata.py --output-dir data/processed/dani_metadata_v1
 
     .venv/bin/python scripts/audit_dani_catalog.py data/processed/dani_metadata_v1 --output-dir artifacts/audits/dani_metadata_v1
 
-The DANI audit is offline and refuses an incomplete scout, changed source evidence, an image field
-in the catalogue, or any attempt to mark the metadata-only source as trainable.
+    .venv/bin/python scripts/scan_dani_lineage_metadata.py --output-dir data/processed/dani_lineage_metadata_v1
+
+    .venv/bin/python scripts/audit_dani_lineage.py data/processed/dani_lineage_metadata_v1 \
+      --mapping /path/to/pinned/image_captions_dict_new.json \
+      --mapping-url https://raw.githubusercontent.com/ryliu68/DJudge/6b877a12df94ddc4f68abb54db7912dc966d17e4/demo_code/Collect_AIGI_data/data/image_captions_dict_new.json \
+      --mapping-revision 6b877a12df94ddc4f68abb54db7912dc966d17e4 \
+      --output-dir artifacts/audits/dani_lineage_mapping_v1
+
+Both DANI audits are offline and fail closed on an incomplete scan, changed source evidence, raw
+image/caption fields, or an unverified mapping pair. Candidate selection, image download, split
+assignment and training remain blocked pending an official COCO annotation join, licence-chain
+review, byte/pixel data-quality audit and deterministic parent-grouped split.
 
 `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter training,
 model selection, threshold selection or augmentation selection. The preparation script does not

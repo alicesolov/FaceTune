@@ -40,11 +40,12 @@ The primary next study, HighRes-v1, is separately pre-registered around a common
 from a controlled source of 512-pixel-or-larger images. A complete metadata audit rejected
 CommunityForensics-Small as a broad primary source: its common 512 x 512 PNG/RGB gate is almost
 entirely synthetic. B-Free is a conditional controlled 512-pixel candidate when its official
-archives can be reached and verified [13]. DANI is being audited only as a descriptive fallback:
-its public metadata does not expose a documented parent COCO/caption key [14]. There is no final
-materialised corpus, leakage-audited split, trained HighRes-v1 model, robustness result, or
-external result. The report consequently offers a reproducible protocol and limited historical
-exploratory observations, not a claim of general AI-image detection. A local prototype is
+archives can be reached and verified [13]. DANI remains a descriptive fallback [14]. Its
+path-derived candidate keys now match a pinned D-Judge mapping completely, but official COCO
+identity, the licence chain, image-byte quality and the final grouped split are not yet verified.
+There is no final materialised corpus, leakage-audited split, trained HighRes-v1 model, robustness
+result, or external result. The report consequently offers a reproducible protocol and limited
+historical exploratory observations, not a claim of general AI-image detection. A local prototype is
 deliberately gated on a completed, explicitly selected HighRes-v1 checkpoint and must display an
 experimental model score rather than a probability or proof.
 
@@ -262,14 +263,19 @@ label-correlated. A file-size-only control on its locked upstream test role gave
 and balanced accuracy 0.595238. This rejects it as a positive training or model-selection corpus
 while retaining it as reproducible negative data-quality evidence.
 
-DANI [14], revision 870e29fcdc13c405fae35442899e9ba1da11691d, is being scanned through its seven
+DANI [14], revision 870e29fcdc13c405fae35442899e9ba1da11691d, was first scanned through its seven
 non-binary metadata fields only: index, declared size, category, class identifier, model,
-generation type, and reference flag. The binary image field is explicitly excluded. This allows a
-reproducible description of the 512/768/1024 generator strata without downloading image bytes.
-However, the public schema has no documented COCO parent-image or caption identifier. Its
-image-level index cannot be promoted to a pair key, and the catalog is deliberately blocked from
-internal selection, split assignment, or training until a separate mapping audit proves a stable
-parent group.
+generation type, and reference flag. A second Arrow projection requested `image.path` but not
+`image.bytes`, recovering candidate parent-image and caption identifiers from locked basenames.
+The offline mapping audit joined all 540,258 catalogue rows exactly to
+`image_captions_dict_new.json` from D-Judge revision
+6b877a12df94ddc4f68abb54db7912dc966d17e4 (file SHA-256
+`d21590e888794de4faa768f2a36c3f00c8088fb23330bf0b1e1addd8437999e7`). It observed 5,000 candidate
+parents and 25,014 candidate parent-caption pairs; every parent and every pair occurs under both
+labels. This is evidence that the reconstructed keys agree with the pinned D-Judge mapping, not an
+official COCO identity claim. Internal selection, split assignment and training remain blocked
+until an official COCO annotation join, the combined licence/provenance chain, image-byte quality
+and a deterministic parent-grouped split have been verified.
 
 The common future raster will be highres_square_crop_384_v1: a source square crop followed by one
 384 x 384 LANCZOS resize. A source below the frozen minimum is rejected rather than upsampled.

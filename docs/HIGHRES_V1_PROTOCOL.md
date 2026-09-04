@@ -49,7 +49,7 @@ origin of an arbitrary uploaded image or authenticate an image in the forensic s
 | Rejected broad-source candidate | [CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small), revision 6c539a534c07917307c381f5af4053c6091b5278 | The complete metadata-only audit found that the strict common 512 x 512, PNG, RGB, explicitly non-NSFW gate leaves 1,005 real rows and 228,833 generated rows. This is a class/source shortcut, not a valid general primary corpus. No model is trained on it and the gate is not silently loosened. A separate face-only cohort may be studied later only under its own protocol. |
 | Conditional controlled primary candidate | [B-Free training data](https://raw.githubusercontent.com/grip-unina/B-Free/main/training_data/README.md) | If the authors' official data server becomes reachable, the planned core comparison is COCO_real_512 against SD2.1_selfconditioned, with archive checksum verification, source-ID group split and a full byte/pixel audit. The corpus is not currently materialised; no unofficial repack will be substituted. |
 | Exploratory sensitivity audit, not primary training | Local pinned [Defactify Image Dataset](https://huggingface.co/datasets/Rajarshi-Roy-research/Defactify_Image_Dataset), revision `787334f7857fa54f29027a7f09c30e895ad486ef` | Native-384 caption-matched audit only. It preserves upstream roles after component exclusion and records residual file-size bias. It may document why source-scale normalisation remains insufficient; it cannot provide a HighRes-v1 result, select a model, or enable the interface. |
-| Descriptive fallback under audit, not an internal corpus | [DANI](https://huggingface.co/datasets/Renyang/DANI), revision 870e29fcdc13c405fae35442899e9ba1da11691d | A revision-pinned metadata-only scan is used to audit declared size, generator, type and class composition without requesting image bytes. Its public non-binary schema has no documented COCO parent/caption group, so it is blocked from internal candidate selection, split assignment and training until a separate mapping audit proves a stable parent key. |
+| Descriptive fallback with verified candidate lineage, not an internal corpus | [DANI](https://huggingface.co/datasets/Renyang/DANI), revision 870e29fcdc13c405fae35442899e9ba1da11691d | Metadata-only and path-only scans request no image bytes. All 540,258 path-derived rows join exactly to the pinned D-Judge mapping: 5,000 candidate COCO parents and 25,014 candidate caption pairs, each crossing both labels. This verifies the keys against D-Judge, not official COCO identity. Selection and training remain blocked pending the official annotation join, licence chain, byte/pixel audit and deterministic parent-grouped split. |
 | Locked external benchmark | [Synthbuster](https://zenodo.org/records/10066460) + [RAISE-1k](https://loki.disi.unitn.it/RAISE/download.html) | Open only after the HighRes-v1 architecture, validation rule, seed protocol and threshold are frozen. RAISE must never enter training. |
 | Conditional descriptive benchmark | [CommunityForensics-Eval](https://huggingface.co/datasets/OwensLab/CommunityForensics-Eval), revision `7d4a74a88d2cac93b513c0853bf92c260eaceea0` | Do not use for training or selection. Before any score, run exact- and perceptual-hash contamination checks against the materialised corpus and respect its FFHQ/COCO split restrictions. A passed check supports a clearly labelled cross-dataset result; a failed or inconclusive check excludes it. |
 | Optional second independent benchmark | [GenImage official test split](https://github.com/GenImage-Dataset/GenImage) | Evaluate only after the first external benchmark is locked. Report every generator separately rather than calling the whole set “unseen”. |
@@ -59,11 +59,16 @@ make a usable training source: the two labels must be jointly supported in a con
 stratum; source-level and semantic leakage groups must be reproducible; and decoded image evidence
 must later confirm that format, resolution or export pipeline has not become the classifier.
 
-For DANI in particular, the documentation establishes COCO-derived generation history, but the
-public catalogue exposes only an image-level index, not a parent COCO/caption key. Row order,
-category, class identifier, or a shared generator name must never be used to guess pair membership.
-Until that missing mapping is recovered from a revision-pinned non-binary source, DANI can support
-source analysis or a future locked descriptive test only.
+For DANI in particular, the public non-binary schema exposes only an image-level index. A separate
+path-only scan recovered candidate `parent_coco_image_id` and `coco_caption_id` values from locked
+basenames, then an offline audit joined all 540,258 rows exactly to a D-Judge mapping pinned at
+revision 6b877a12df94ddc4f68abb54db7912dc966d17e4 (mapping SHA-256
+`d21590e888794de4faa768f2a36c3f00c8088fb23330bf0b1e1addd8437999e7`). The catalogue contains
+5,000 candidate parents and 25,014 candidate caption pairs; every parent and pair occurs in both
+labels. Row order, category, class identifier and generator name were not used as linkage evidence.
+The result proves agreement with the pinned D-Judge mapping only. It does not replace an official
+COCO annotation join, a licence-chain review, a byte/pixel audit, or a frozen group split, so DANI
+still supports source analysis only and cannot yet enter selection or training.
 
 ## Immutable inclusion gate
 
