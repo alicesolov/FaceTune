@@ -227,7 +227,7 @@ stage, not a throwaway helper:
 | Audit Defactify native-384 sensitivity data | `build_defactify_highres_manifest.py`, then the `file_metadata_control` baseline only |
 | Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py`, `audit_highres_catalog.py`, `scan_dani_metadata.py`, `audit_dani_catalog.py` |
 | Train and analyse internal models | `run_baselines.py`, `run_experiment.py`, `analyze_predictions.py`, `aggregate_experiments.py` |
-| Frozen validation only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_robustness.py` |
+| Frozen validation and terminal test only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_internal_selection.py` |
 
 An earlier standalone annotation helper was removed because `prepare_defactify.py` now creates the
 same declared generator field and consistency check itself.
