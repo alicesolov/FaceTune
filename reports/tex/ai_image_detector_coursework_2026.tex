@@ -17,6 +17,9 @@
 \usepackage{enumitem}
 \usepackage{caption}
 \usepackage{graphicx}
+
+% Figures are rebuilt from frozen local artifacts by scripts/build_report_figures.py.
+
 \usepackage{xcolor}
 \usepackage{fancyhdr}
 \usepackage{hyperref}
@@ -396,6 +399,33 @@ No parent crosses a split. Within each split, all four generated conditions have
 the real parent count. This makes generator-stratified real-versus-generator evaluation possible
 without changing the real reference set.
 
+Figure~\ref{fig:split-composition} visualises the deliberate four-to-one observation ratio. The
+training sampler later balances binary optimisation within each parent; the reported validation
+and test metrics retain the full declared evaluation distribution.
+
+\begin{center}
+\centering
+\includegraphics[width=0.94\textwidth]{../../output/report_figures/dataset_split_composition.png}
+\captionof{figure}{Real and AI-generated image counts in the parent-disjoint split. Every parent contributes
+one real row and four generated rows.}
+\label{fig:split-composition}
+\end{center}
+
+Figure~\ref{fig:parent-example} gives a qualitative view of one complete parent group. To avoid
+illustration cherry-picking, the report builder selects the lowest numeric COCO parent identifier
+among complete validation groups with readable files. It does not inspect model predictions or
+test data. Image-conditioned outputs remain visually close to the real parent, whereas the two
+text-to-image outputs reconstruct the scene more freely.
+
+\begin{center}
+\centering
+\includegraphics[width=\textwidth]{../../output/report_figures/dani_parent_group_examples.png}
+\captionof{figure}{Deterministically selected DANI validation group \texttt{coco-parent:785}: one real COCO
+photograph and four declared generated conditions. The pinned manifest records the real image as
+CC BY 2.0; the DANI subset is used under its non-commercial research licence \cite{dani2026card}.}
+\label{fig:parent-example}
+\end{center}
+
 \subsection{Original-byte integrity audit}
 
 Downloaded files were decoded and checked against the materialisation manifest. The audit counted
@@ -476,10 +506,25 @@ normalisation, and replicates the result to three channels for ResNet-50. Thus a
 difference occurs after shared image decoding and resizing.
 
 \begin{center}
-\fbox{\parbox{0.92\textwidth}{\centering
-Audited 1024×1024 RGB PNG $\rightarrow$ one 384×384 Lanczos raster
-$\rightarrow$ \{RGB normalisation \textbf{or} grayscale FFT log magnitude\}
-$\rightarrow$ matched ResNet-50 $\rightarrow$ model score}}
+\centering
+\includegraphics[width=\textwidth]{../../output/report_figures/experimental_pipeline.png}
+\captionof{figure}{Evidence flow from pinned metadata to the one-time frozen test. The internal test is not
+used during representation, seed, checkpoint, or threshold selection.}
+\label{fig:pipeline}
+\end{center}
+
+Figure~\ref{fig:rgb-fft-example} shows that FFT magnitude is not an alternative picture rendering
+but a frequency representation of the same common raster. Bright central energy corresponds to
+low spatial frequencies, while directional lines and off-centre structure encode repeated edges
+and textures. The two spectra are descriptive examples only; no decision is made by visual
+inspection of this pair.
+
+\begin{center}
+\centering
+\includegraphics[width=0.72\textwidth]{../../output/report_figures/rgb_fft_examples.png}
+\captionof{figure}{The common RGB raster and shifted log FFT magnitude for the real and SDXL-I2I rows of the
+deterministically selected validation parent. Each spectrum is robustly scaled for display.}
+\label{fig:rgb-fft-example}
 \end{center}
 
 \subsection{Model and optimisation contract}
@@ -628,6 +673,14 @@ H1 is supported within the validation protocol: FFT has the higher mean primary 
 budget. The large variation prevents a stronger claim that FFT training is stable. The seed-17
 checkpoint is representative by declaration, not because it is numerically best.
 
+\begin{center}
+\centering
+\includegraphics[width=0.96\textwidth]{../../output/report_figures/validation_seed_comparison.png}
+\captionof{figure}{Matched validation ROC-AUC and balanced accuracy for every predeclared seed. The graph
+makes both the consistent FFT advantage and the seed-42 degradation visible.}
+\label{fig:seed-comparison}
+\end{center}
+
 \subsection{Frozen clean internal test}
 
 The clean test contains 222 real and 888 synthetic images from 222 parents. Table
@@ -654,6 +707,15 @@ was 0.815315 and AI recall 0.836712. ECE was 0.030147 and the Brier score was 0.
 test ROC-AUC is close to the representative checkpoint's validation ROC-AUC of 0.897454, so there
 is no large aggregate validation-to-test collapse. This agreement is internal to the same source
 and preprocessing distribution.
+
+\begin{center}
+\centering
+\includegraphics[width=0.62\textwidth]{../../output/report_figures/clean_confusion_matrix.png}
+\captionof{figure}{Clean internal-test confusion matrix at the validation-selected threshold. Percentages
+are normalised within each actual class so the four-to-one observation ratio does not hide class
+recall.}
+\label{fig:confusion}
+\end{center}
 
 \subsection{Generator-condition heterogeneity}
 
@@ -682,14 +744,21 @@ an aggregate score is dominated by four synthetic sources and can obscure the we
 The finding is consistent with the possibility that image-conditioned generation preserves more
 natural-image frequency structure. It is an interpretation, not a causal demonstration.
 
+\begin{center}
+\centering
+\includegraphics[width=0.88\textwidth]{../../output/report_figures/generator_performance.png}
+\captionof{figure}{Clean internal-test performance by generated condition against the same 222 real
+parents. T2I is materially easier for the frozen model than I2I and TI2I.}
+\label{fig:generator-performance}
+\end{center}
+
 \subsection{Robustness results}
 
 Table~\ref{tab:robustness} shows the unchanged checkpoint and threshold under all predeclared
 conditions.
 
-\begin{table}[ht]
-\centering
-\caption{Aggregate robustness results.}
+\begin{center}
+\captionof{table}{Aggregate robustness results.}
 \label{tab:robustness}
 \small
 \begin{tabular}{lrrrrr}
@@ -705,7 +774,15 @@ Resize 0.50 & 0.416144 & 0.478604 & 0.262398 & 0.833333 & 0.123874\\
 Gaussian blur & 0.430051 & 0.453829 & 0.362177 & 0.585586 & 0.322072\\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{center}
+
+\begin{center}
+\centering
+\includegraphics[width=0.96\textwidth]{../../output/report_figures/robustness_metrics.png}
+\captionof{figure}{ROC-AUC and balanced accuracy under the seven predeclared conditions, with the checkpoint
+and threshold fixed. The below-chance ordering after resize and blur is a central negative result.}
+\label{fig:robustness}
+\end{center}
 
 Even high-quality JPEG Q95 reduced BAcc by 0.109235. At Q75 and Q50, the fixed operating point
 shifted strongly toward the AI class: real recall fell to 0.144144 and 0.040541. The model therefore
@@ -930,6 +1007,7 @@ Internal test & 1,110 images from 222 parents; 222 real and 888 synthetic\\
 Uncertainty & 2,000 percentile bootstrap resamples; unit = \path{group_id}; seed 20260829\\
 Terminal output & \path{artifacts/evaluations/dani_fft_seed17_internal_test_v1}\\
 Terminal status & \path{completed_no_post_test_tuning}\\
+Report figures & \path{scripts/build_report_figures.py}; deterministic selection record in \path{output/report_figures/report_figures_manifest.json}\\
 Notebooks & \path{notebooks/01_internal_training.ipynb}; \path{notebooks/02_external_validation_and_results.ipynb}\\
 \bottomrule
 \end{longtable}

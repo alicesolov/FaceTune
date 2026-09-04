@@ -71,10 +71,16 @@ long-form research ledger. The submission-oriented 2026 source is
 After installing Tectonic, rebuild the PDF with:
 
 ```bash
+.venv/bin/python scripts/build_report_figures.py
 tectonic --outdir output/pdf reports/tex/ai_image_detector_coursework_2026.tex
 ```
 
-The generated PDF is intentionally kept outside Git.
+The figure builder reads the frozen manifest and evaluation artifacts, deterministically selects
+one complete validation parent group without using model scores, and writes its selection rule,
+input hashes and figure hashes to `output/report_figures/report_figures_manifest.json`. It also
+creates the split, RGB/FFT, seed, confusion-matrix, generator and robustness graphics used by the
+report. Generated figures and the PDF are intentionally kept outside Git; this prevents raw or
+derived dataset images from being redistributed through the repository.
 
 ## Historical H1-N commands
 
