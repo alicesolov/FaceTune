@@ -78,6 +78,12 @@ REQUIRED_EVIDENCE_FILES = (
 )
 EXPECTED_SOURCE_KEYS = ("source_sha256", "source_pixel_sha256", "source_phash")
 EXPECTED_OUTPUT_KEYS = ("sha256", "pixel_sha256", "phash")
+EXPLORATORY_ELIGIBILITY_FIELDS = (
+    "eligible_for_exploratory_sensitivity_training",
+    "eligible_for_primary_highres_training",
+    "eligible_for_model_selection",
+    "eligible_for_external_evaluation",
+)
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
@@ -125,6 +131,37 @@ def _require_int(value: object, *, field: str, minimum: int = 0) -> int:
     if parsed < minimum:
         raise ValueError(f"{field} must be at least {minimum}")
     return parsed
+
+
+def _validated_exploratory_eligibility(provenance: Mapping[str, object]) -> dict[str, bool]:
+    eligibility = provenance.get("eligibility")
+    if not isinstance(eligibility, Mapping):
+        raise TypeError("provenance.json.eligibility must be an object")
+    if set(eligibility) != set(EXPLORATORY_ELIGIBILITY_FIELDS) | {"scope_limitations"}:
+        raise ValueError("provenance.json has an unsupported exploratory eligibility schema")
+    resolved: dict[str, bool] = {}
+    for field in EXPLORATORY_ELIGIBILITY_FIELDS:
+        value = eligibility.get(field)
+        if not isinstance(value, bool):
+            raise TypeError(f"provenance.json.eligibility.{field} must be boolean")
+        resolved[field] = value
+    if resolved != {
+        "eligible_for_exploratory_sensitivity_training": True,
+        "eligible_for_primary_highres_training": False,
+        "eligible_for_model_selection": False,
+        "eligible_for_external_evaluation": False,
+    }:
+        raise ValueError(
+            "provenance.json has an unsupported Defactify exploratory eligibility state"
+        )
+    limitations = eligibility.get("scope_limitations")
+    if (
+        not isinstance(limitations, list)
+        or not limitations
+        or any(not isinstance(item, str) or not item.strip() for item in limitations)
+    ):
+        raise ValueError("provenance.json.eligibility.scope_limitations must be nonempty text")
+    return resolved
 
 
 def _resolve_manifest_image_path(value: object, manifest_path: Path) -> Path:
@@ -511,6 +548,7 @@ def validate_defactify_exploratory_corpus(
     provenance, source_lock, manifest_hash, source_lock_hash, images_root = _validate_evidence(
         resolved_manifest, verified_frame
     )
+    eligibility = _validated_exploratory_eligibility(provenance)
     for row_index, row in verified_frame.iterrows():
         _validate_row_metadata(row, row_index=int(row_index))
         _validate_canonical_image(
@@ -557,4 +595,5 @@ def validate_defactify_exploratory_corpus(
             "keys_checked": list(SPLIT_ISOLATION_KEYS),
             "rows_by_split": rows_by_split,
         },
+        "eligibility": eligibility,
     }

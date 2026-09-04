@@ -35,6 +35,21 @@ from ai_image_detector.reproducibility import (
 BASELINE_NAMES = ("radial_fft_logistic", "file_metadata_control")
 
 
+def require_defactify_exploratory_baseline_scope(
+    baselines: tuple[str, ...], preprocessing_protocol: str
+) -> None:
+    """Keep the residual-bias corpus limited to its declared pre-training control."""
+    if preprocessing_protocol != HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+        return
+    unsupported = tuple(name for name in baselines if name != "file_metadata_control")
+    if unsupported:
+        raise ValueError(
+            "The Defactify native384 exploratory corpus permits only file_metadata_control; "
+            "refusing pixel baselines because its residual source/pipeline shortcut is a failed "
+            "data-quality gate, not detector evidence."
+        )
+
+
 def selected_baselines(only: str | None) -> tuple[str, ...]:
     """Resolve the CLI selection to the exact baselines this launch will run."""
     return (only,) if only is not None else BASELINE_NAMES
@@ -228,6 +243,7 @@ def main() -> None:
     )
     args = parser.parse_args()
     baselines = selected_baselines(args.only)
+    require_defactify_exploratory_baseline_scope(baselines, args.preprocessing_protocol)
     outputs = require_fresh_output_dirs(
         args.output_root, baselines, args.seed, args.preprocessing_protocol
     )

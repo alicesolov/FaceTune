@@ -104,7 +104,35 @@ that script rejects a single run and never picks a best test-set seed.
 ## Data provenance and acquisition
 
 The historical source is [Defactify Image Dataset](https://huggingface.co/datasets/Rajarshi-Roy-research/Defactify_Image_Dataset).
-It remains preserved for the 128 x 128 pilot only; it is not enlarged by upsampling.
+It remains preserved for the 128 x 128 pilot and one separately labelled native-384 data-quality
+audit; it is not enlarged by upsampling and is not a HighRes-v1 training source.
+
+### Defactify native-384 audit (negative data-quality control)
+
+The following command is reproducible **only as a data-quality audit**. It verifies the pinned raw
+source, writes canonical 384 x 384 PNG/RGB crops and records the leakage/component evidence before
+preserving the source's upstream split roles. Use a fresh, ignored output directory: the builder
+refuses to overwrite a previous corpus.
+
+```bash
+.venv/bin/python scripts/build_defactify_highres_manifest.py \
+  --output-dir data/processed/defactify_exploratory_native384_reproduction
+```
+
+The relevant pre-training control uses no image pixels. A material shortcut is a failed corpus
+quality gate, not a promising baseline and not a reason to start neural training:
+
+```bash
+.venv/bin/python scripts/run_baselines.py \
+  --manifest data/processed/defactify_exploratory_native384_reproduction/highres_manifest.csv \
+  --only file_metadata_control \
+  --preprocessing-protocol defactify_hr_native384_canonical_v1 \
+  --output-root artifacts/preflight/defactify_exploratory_reproduction
+```
+
+Do not run `run_experiment.py`, external evaluation, or the local interface from this audit corpus.
+Its observed shortcut is documented in [HighRes-v1](docs/HIGHRES_V1_PROTOCOL.md), not hidden by a
+more flattering image-model score.
 
 The first HighRes-v1 candidate,
 [CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small) at
@@ -178,6 +206,7 @@ stage, not a throwaway helper:
 | Stage | Entry points |
 | --- | --- |
 | Acquire and audit internal data | `prepare_defactify.py`, `audit_manifest.py`, `make_grouped_split.py` |
+| Audit Defactify native-384 sensitivity data | `build_defactify_highres_manifest.py`, then the `file_metadata_control` baseline only |
 | Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py`, `audit_highres_catalog.py`, `scan_dani_metadata.py`, `audit_dani_catalog.py` |
 | Train and analyse internal models | `run_baselines.py`, `run_experiment.py`, `analyze_predictions.py`, `aggregate_experiments.py` |
 | Frozen validation only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_robustness.py` |

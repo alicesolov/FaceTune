@@ -75,6 +75,16 @@ def test_selected_baselines_keeps_an_explicit_single_baseline() -> None:
     assert run_baselines.selected_baselines("file_metadata_control") == ("file_metadata_control",)
 
 
+def test_defactify_exploratory_scope_allows_only_file_metadata_control() -> None:
+    protocol = run_baselines.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
+    run_baselines.require_defactify_exploratory_baseline_scope(("file_metadata_control",), protocol)
+
+    with pytest.raises(ValueError, match="permits only file_metadata_control"):
+        run_baselines.require_defactify_exploratory_baseline_scope(
+            ("radial_fft_logistic",), protocol
+        )
+
+
 def test_baseline_output_paths_are_protocol_specific_and_refuse_overwrite(tmp_path: Path) -> None:
     outputs = run_baselines.require_fresh_output_dirs(
         tmp_path, ("radial_fft_logistic", "file_metadata_control"), 17, "h1n_square_crop_128_v1"
@@ -91,9 +101,13 @@ def test_baseline_output_paths_are_protocol_specific_and_refuse_overwrite(tmp_pa
         )
 
 
-def test_run_one_writes_launch_provenance_to_its_existing_run_json(tmp_path: Path, monkeypatch) -> None:
+def test_run_one_writes_launch_provenance_to_its_existing_run_json(
+    tmp_path: Path, monkeypatch
+) -> None:
     sentinel_model = object()
-    monkeypatch.setattr(run_baselines, "fit_radial_logistic", lambda *args, **kwargs: sentinel_model)
+    monkeypatch.setattr(
+        run_baselines, "fit_radial_logistic", lambda *args, **kwargs: sentinel_model
+    )
     monkeypatch.setattr(
         run_baselines,
         "radial_predict",

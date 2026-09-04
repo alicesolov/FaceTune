@@ -214,6 +214,20 @@ def resolve_paired_group_column(
     return resolve_group_column(frame, "leakage_group")
 
 
+def require_primary_highres_training_eligibility(
+    canonical_corpus_integrity: dict[str, object],
+) -> None:
+    """Refuse neural training when a verified corpus is explicitly not a primary study source."""
+    eligibility = canonical_corpus_integrity.get("eligibility")
+    if not isinstance(eligibility, dict):
+        raise TypeError("Canonical corpus integrity record has no validated eligibility state")
+    if eligibility.get("eligible_for_primary_highres_training") is not True:
+        raise ValueError(
+            "This corpus is not eligible for primary HighRes training; refusing neural training "
+            "before model artifacts are created."
+        )
+
+
 def build_model_launch_metadata(
     *,
     manifest: dict[str, object],
@@ -318,6 +332,8 @@ def main() -> None:
         if args.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
         else None
     )
+    if canonical_corpus_integrity is not None:
+        require_primary_highres_training_eligibility(canonical_corpus_integrity)
     required = {"train", "val", "test"}
     missing = required.difference(frame["split"])
     if missing:

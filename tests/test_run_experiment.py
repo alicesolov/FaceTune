@@ -57,6 +57,20 @@ def test_requested_sampler_overrides_protocol_default() -> None:
     )
 
 
+def test_defactify_exploratory_integrity_blocks_neural_training() -> None:
+    with pytest.raises(ValueError, match="not eligible for primary HighRes training"):
+        run_experiment.require_primary_highres_training_eligibility(
+            {
+                "eligibility": {
+                    "eligible_for_exploratory_sensitivity_training": True,
+                    "eligible_for_primary_highres_training": False,
+                    "eligible_for_model_selection": False,
+                    "eligible_for_external_evaluation": False,
+                }
+            }
+        )
+
+
 def test_paired_group_default_preserves_highres_caption_pairs() -> None:
     frame = _isolated_manifest_frame()
 

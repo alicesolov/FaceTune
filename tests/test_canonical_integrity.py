@@ -159,6 +159,13 @@ def _write_fixture(tmp_path: Path) -> tuple[Path, pd.DataFrame]:
                 "decoded_rgb_png_rows": len(rows),
                 "canonical_images_directory": highres.CANONICAL_IMAGES_DIRECTORY,
             },
+            "eligibility": {
+                "eligible_for_exploratory_sensitivity_training": True,
+                "eligible_for_primary_highres_training": False,
+                "eligible_for_model_selection": False,
+                "eligible_for_external_evaluation": False,
+                "scope_limitations": ["Fixture scope limitation."],
+            },
         },
     )
     return manifest_path, load_manifest(manifest_path, check_paths=True)
@@ -178,7 +185,20 @@ def test_validates_absolute_paths_from_load_manifest_and_returns_json_safe_summa
     assert summary["canonical_images"]["encoded_size"] == [384, 384]
     assert summary["canonical_images"]["byte_sha256_matches"] == 6
     assert summary["split_isolation"]["rows_by_split"] == {"test": 2, "train": 2, "val": 2}
+    assert summary["eligibility"]["eligible_for_primary_highres_training"] is False
     json.dumps(summary)
+
+
+def test_rejects_tampered_exploratory_eligibility(tmp_path: Path) -> None:
+    manifest_path, _ = _write_fixture(tmp_path)
+    provenance_path = manifest_path.parent / highres.PROVENANCE_NAME
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["eligibility"]["eligible_for_model_selection"] = True
+    _write_json(provenance_path, provenance)
+    frame = load_manifest(manifest_path, check_paths=True)
+
+    with pytest.raises(ValueError, match="unsupported Defactify exploratory eligibility"):
+        integrity.validate_defactify_exploratory_corpus(manifest_path, frame)
 
 
 def test_rejects_tampered_canonical_image_before_decode(tmp_path: Path) -> None:
