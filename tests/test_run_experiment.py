@@ -34,6 +34,10 @@ def test_experiment_output_directory_refuses_overwrite(tmp_path: Path) -> None:
             run_experiment.PAIRED_GROUP_BALANCED_SAMPLER,
         ),
         (
+            run_experiment.DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+            run_experiment.PAIRED_COMPONENT_BINARY_SAMPLER,
+        ),
+        (
             run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
             run_experiment.PAIRED_COMPONENT_BINARY_SAMPLER,
         ),
@@ -74,6 +78,12 @@ def test_defactify_exploratory_integrity_blocks_neural_training() -> None:
 def test_paired_group_default_preserves_highres_caption_pairs() -> None:
     frame = _isolated_manifest_frame()
 
+    assert (
+        run_experiment.resolve_paired_group_column(
+            frame, run_experiment.DANI_HIGHRES_PREPROCESSING_PROTOCOL, None
+        )
+        == "group_id"
+    )
     assert (
         run_experiment.resolve_paired_group_column(
             frame, run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL, None

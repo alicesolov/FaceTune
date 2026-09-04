@@ -129,6 +129,37 @@ def _training_row(
     }
 
 
+def validate_training_manifest(manifest_path: str | Path) -> dict[str, object]:
+    """Require an adjacent successful DANI integrity record for the exact manifest bytes."""
+    manifest = Path(manifest_path).resolve()
+    if manifest.name != TRAINING_MANIFEST_NAME:
+        raise ValueError(f"DANI training requires the audited {TRAINING_MANIFEST_NAME}")
+    summary_path = manifest.parent / SUMMARY_NAME
+    if not manifest.is_file() or not summary_path.is_file():
+        raise FileNotFoundError("DANI training manifest or adjacent integrity summary is missing")
+    summary = _read_json(summary_path)
+    if summary.get("schema_version") != INTEGRITY_SCHEMA_VERSION:
+        raise ValueError("DANI integrity summary has an unsupported schema_version")
+    artifacts = summary.get("artifacts")
+    if not isinstance(artifacts, dict) or artifacts.get("training_manifest") != manifest.name:
+        raise ValueError("DANI integrity summary does not identify this training manifest")
+    eligibility = summary.get("eligibility")
+    if (
+        not isinstance(eligibility, dict)
+        or eligibility.get("eligible_for_training") is not True
+        or eligibility.get("eligible_for_model_selection") is not False
+        or eligibility.get("eligible_for_external_evaluation") is not False
+    ):
+        raise ValueError("DANI integrity summary is not eligible for controlled training")
+    actual_hash = dani.sha256_file(manifest)
+    if summary.get("training_manifest_sha256") != actual_hash:
+        raise ValueError("DANI training manifest differs from its integrity summary")
+    counts = summary.get("counts")
+    if not isinstance(counts, dict) or not isinstance(counts.get("row_count"), int):
+        raise TypeError("DANI integrity summary has no validated row count")
+    return summary
+
+
 def _load_materialized(materialized_dir: Path) -> tuple[list[dict[str, str]], dict[str, object]]:
     manifest_path = materialized_dir / dani_materialize.MATERIALIZED_MANIFEST_NAME
     provenance_path = materialized_dir / dani_materialize.MATERIALIZED_PROVENANCE_NAME

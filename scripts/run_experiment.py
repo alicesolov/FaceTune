@@ -10,8 +10,10 @@ from typing import Any
 import pandas as pd
 
 from ai_image_detector.canonical_integrity import validate_defactify_exploratory_corpus
+from ai_image_detector.dani_integrity import validate_training_manifest as validate_dani_manifest
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    DANI_HIGHRES_PREPROCESSING_PROTOCOL,
     HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
     FFTTransform,
@@ -188,7 +190,10 @@ def resolve_train_sampler(preprocessing_protocol: str, requested_sampler: str | 
     """Resolve a protocol's declared sampler unless a documented ablation overrides it."""
     if requested_sampler is not None:
         return requested_sampler
-    if preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+    if preprocessing_protocol in {
+        DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+        HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+    }:
         return PAIRED_COMPONENT_BINARY_SAMPLER
     if preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
         return PAIRED_GROUP_BALANCED_SAMPLER
@@ -209,7 +214,10 @@ def resolve_paired_group_column(
     """
     if requested_column is not None:
         return resolve_group_column(frame, requested_column)
-    if preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+    if preprocessing_protocol in {
+        DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+        HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+    }:
         return resolve_group_column(frame, "group_id")
     return resolve_group_column(frame, "leakage_group")
 
@@ -240,6 +248,7 @@ def build_model_launch_metadata(
     train_sampler: dict[str, object],
     trainable_parameters: int,
     canonical_corpus_integrity: dict[str, object] | None = None,
+    dani_corpus_integrity: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Build JSON-safe launch provenance without coupling it to training side effects."""
     pretrained = not bool(requested_options["from_scratch"])
@@ -268,6 +277,8 @@ def build_model_launch_metadata(
     }
     if canonical_corpus_integrity is not None:
         metadata["canonical_corpus_integrity"] = canonical_corpus_integrity
+    if dani_corpus_integrity is not None:
+        metadata["dani_corpus_integrity"] = dani_corpus_integrity
     return metadata
 
 
@@ -288,13 +299,15 @@ def main() -> None:
         "--preprocessing-protocol",
         choices=(
             CONTROLLED_PREPROCESSING_PROTOCOL,
+            DANI_HIGHRES_PREPROCESSING_PROTOCOL,
             HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
             LEGACY_PREPROCESSING_PROTOCOL,
         ),
         default=CONTROLLED_PREPROCESSING_PROTOCOL,
         help=(
-            "Controlled H1-N crop rasterization is the default. The Defactify-HR canonical mode "
-            "accepts only the frozen 384px corpus; legacy mode is for baseline reproduction."
+            "Controlled H1-N crop rasterization is the default. DANI accepts only audited "
+            "1024px sources and downsamples once to 384px. Defactify-HR accepts only its frozen "
+            "384px corpus; legacy mode is for baseline reproduction."
         ),
     )
     parser.add_argument(
@@ -312,8 +325,7 @@ def main() -> None:
         default=None,
         help=(
             "Sampling unit for the controlled paired sampler. Defaults to leakage_group for H1-N "
-            "and group_id for the canonical high-resolution corpus; an explicit value is a "
-            "recorded ablation."
+            "and group_id for high-resolution corpora; an explicit value is a recorded ablation."
         ),
     )
     args = parser.parse_args()
@@ -334,6 +346,11 @@ def main() -> None:
     )
     if canonical_corpus_integrity is not None:
         require_primary_highres_training_eligibility(canonical_corpus_integrity)
+    dani_corpus_integrity = (
+        validate_dani_manifest(manifest_path)
+        if args.preprocessing_protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL
+        else None
+    )
     required = {"train", "val", "test"}
     missing = required.difference(frame["split"])
     if missing:
@@ -341,7 +358,11 @@ def main() -> None:
     validate_split_isolation(
         frame,
         require_highres_source_keys=(
-            args.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
+            args.preprocessing_protocol
+            in {
+                DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+                HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            }
         ),
     )
     manifest = manifest_launch_metadata(manifest_path, frame, manifest_sha256)
@@ -418,6 +439,7 @@ def main() -> None:
             train_sampler=sampler_metadata,
             trainable_parameters=trainable_parameter_count(model),
             canonical_corpus_integrity=canonical_corpus_integrity,
+            dani_corpus_integrity=dani_corpus_integrity,
         ),
         args.output_dir / "model.json",
     )

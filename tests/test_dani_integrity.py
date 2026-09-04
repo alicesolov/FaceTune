@@ -5,6 +5,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 from ai_image_detector import dani, dani_integrity, dani_materialize, dani_selection
 from ai_image_detector.manifest import load_manifest
 
@@ -161,6 +163,39 @@ def test_integrity_audit_emits_training_manifest_when_gates_pass(tmp_path: Path)
     assert training["group_id"].tolist() == training["parent_group"].tolist()
     assert training["leakage_group"].tolist() == training["integrity_component"].tolist()
     assert training.groupby("parent_group")["leakage_group"].nunique().eq(1).all()
+    validated = dani_integrity.validate_training_manifest(training_path)
+    assert validated["training_manifest_sha256"] == dani.sha256_file(training_path)
+
+
+def test_training_manifest_validation_rejects_changed_bytes(tmp_path: Path) -> None:
+    root = tmp_path / "materialized"
+    rows = [
+        _row(
+            root,
+            selection_id="real-train",
+            parent=10,
+            split="train",
+            cell="real_coco",
+            phash="0000000000000000",
+            content=b"real-train",
+        ),
+        _row(
+            root,
+            selection_id="fake-train",
+            parent=10,
+            split="train",
+            cell="fake_sdxl_t2i",
+            phash="ffffffffffffffff",
+            content=b"fake-train",
+        ),
+    ]
+    materialized = _materialized(tmp_path, rows)
+    dani_integrity.audit_integrity(materialized, tmp_path / "audit")
+    manifest = tmp_path / "audit" / dani_integrity.TRAINING_MANIFEST_NAME
+    manifest.write_bytes(manifest.read_bytes() + b"\n")
+
+    with pytest.raises(ValueError, match="differs from its integrity summary"):
+        dani_integrity.validate_training_manifest(manifest)
 
 
 def test_integrity_audit_blocks_cross_split_near_duplicate_component(tmp_path: Path) -> None:
