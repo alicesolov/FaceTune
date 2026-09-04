@@ -40,9 +40,16 @@ uv run python -m ipykernel install --user --name ai-image-detector-research --di
 uv run jupyter lab
 ```
 
-Run notebooks in numerical order. Each notebook either creates a versioned artifact or reads one
-created by an earlier notebook. No notebook contains invented metrics; empty result tables remain
-empty until a run produces them.
+There are deliberately only two notebooks, to keep the research path easy to follow:
+
+1. `notebooks/01_internal_training.ipynb` — environment, data audit, controlled preprocessing,
+   baseline, neural training, and exploratory internal analysis.
+2. `notebooks/02_external_validation_and_results.ipynb` — locked external validation, robustness,
+   aggregation, and final limitations. Its commands remain gated until H1-N is frozen.
+
+Run them in that order. Each notebook either creates a versioned artifact or reads one created by
+an earlier stage. No notebook contains invented metrics; empty result tables remain empty until a
+run produces them.
 
 ## H1-N experiment commands
 
@@ -80,17 +87,37 @@ training, model selection, threshold selection or augmentation selection. The pr
 does not download it automatically because RAISE-1k requires acceptance of its research licence.
 See [data/README.md](data/README.md) and [docs/RESEARCH_PROTOCOL.md](docs/RESEARCH_PROTOCOL.md).
 
-## Layout
+## Repository map
+
+The repository keeps command-line entry points flat because each one is a separate reproducible
+stage, not a throwaway helper:
+
+| Stage | Entry points |
+| --- | --- |
+| Acquire and audit internal data | `prepare_defactify.py`, `audit_manifest.py`, `make_grouped_split.py` |
+| Train and analyse internal models | `run_baselines.py`, `run_experiment.py`, `analyze_predictions.py`, `aggregate_experiments.py` |
+| Frozen validation only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_robustness.py` |
+
+An earlier standalone annotation helper was removed because `prepare_defactify.py` now creates the
+same declared generator field and consistency check itself.
 
 ```text
-notebooks/                  # Executable research narrative
+notebooks/                  # Two runnable research narratives: internal, then external/results
 src/ai_image_detector/      # Reusable data, feature, training and evaluation code
-scripts/                    # Explicit command-line entry points
+scripts/                    # Explicit pipeline entry points listed above
 tests/                      # Unit and smoke tests for claims made by the pipeline
-data/manifests/             # Small provenance and split CSV files only
+data/                       # Policy and small provenance/manifests only; raw data is ignored
 artifacts/                  # Ignored runs, checkpoints, predictions and figures
-reports/generated/          # Ignored automatically generated results tables
+reports/draft/              # Evidence-bound coursework draft in source form
+reports/generated/          # Ignored rendered report deliverables
 ```
+
+## Why the stages are separate
+
+`prepare_*`, `run_*`, and `evaluate_*` scripts intentionally do not call one another implicitly.
+This lets a student inspect a manifest before training, preserve a failed/negative result, and lock
+external data before model selection. The README and the two notebooks are the normal entry points;
+scripts are there for repeatable execution or automation.
 
 ## Non-claims
 
