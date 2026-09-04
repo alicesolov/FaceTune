@@ -6,6 +6,7 @@ import argparse
 import json
 from functools import partial
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
@@ -22,7 +23,89 @@ from ai_image_detector.features import (
 )
 from ai_image_detector.manifest import load_manifest
 from ai_image_detector.metrics import binary_metrics, choose_threshold
-from ai_image_detector.reproducibility import save_json
+from ai_image_detector.reproducibility import (
+    environment_snapshot,
+    save_json,
+    seed_everything,
+    sha256_file,
+)
+
+BASELINE_NAMES = ("radial_fft_logistic", "file_metadata_control")
+
+
+def selected_baselines(only: str | None) -> tuple[str, ...]:
+    """Resolve the CLI selection to the exact baselines this launch will run."""
+    return (only,) if only is not None else BASELINE_NAMES
+
+
+def manifest_path_and_hash_at_launch(manifest_path: Path) -> tuple[Path, str]:
+    """Capture an immutable manifest identity before the manifest is read."""
+    resolved_path = manifest_path.resolve()
+    return resolved_path, sha256_file(resolved_path)
+
+
+def manifest_launch_metadata(
+    manifest_path: Path, manifest_sha256: str, frame: pd.DataFrame
+) -> dict[str, object]:
+    """Describe the exact manifest rows parsed for a baseline launch."""
+    split_counts = {
+        str(split): int(count)
+        for split, count in frame["split"].value_counts(sort=False).sort_index().items()
+    }
+    return {
+        "resolved_path": str(manifest_path),
+        "manifest_sha256": manifest_sha256,
+        "row_counts": {"total": len(frame), "by_split": split_counts},
+    }
+
+
+def requested_launch_options(args: argparse.Namespace) -> dict[str, object]:
+    """Retain user-supplied CLI values before defaults are resolved."""
+    return {
+        "seed": int(args.seed),
+        "selected_baseline": args.only,
+        "preprocessing_protocol": args.preprocessing_protocol,
+    }
+
+
+def resolved_launch_options(
+    requested_options: dict[str, object], baselines: tuple[str, ...]
+) -> dict[str, object]:
+    """Record the concrete execution choices after expanding CLI defaults."""
+    return {
+        "seed": requested_options["seed"],
+        "selected_baselines": list(baselines),
+        "preprocessing_protocol": requested_options["preprocessing_protocol"],
+    }
+
+
+def build_baseline_run_metadata(
+    *,
+    name: str,
+    seed: int,
+    threshold: float,
+    preprocessing: dict[str, object] | None,
+    manifest: dict[str, object],
+    environment_at_launch: dict[str, Any],
+    requested_options: dict[str, object],
+    resolved_options: dict[str, object],
+) -> dict[str, Any]:
+    """Build the existing run.json payload plus immutable launch provenance."""
+    return {
+        # Keep the established fields unchanged for existing analysis tooling.
+        "name": name,
+        "seed": seed,
+        "threshold": threshold,
+        "preprocessing": preprocessing,
+        "role": "dataset_bias_control" if name == "file_metadata_control" else "pixel_baseline",
+        # Capture these values before training/prediction starts; do not infer them at write time.
+        "manifest": manifest,
+        "environment_at_launch": environment_at_launch,
+        "launch_options": {
+            "requested": requested_options,
+            "resolved": resolved_options,
+        },
+    }
 
 
 def run_one(
@@ -33,6 +116,10 @@ def run_one(
     output: Path,
     seed: int,
     preprocessing_protocol: str,
+    manifest: dict[str, object],
+    environment_at_launch: dict[str, Any],
+    requested_options: dict[str, object],
+    resolved_options: dict[str, object],
 ) -> None:
     if name == "radial_fft_logistic":
         model = fit_radial_logistic(
@@ -65,13 +152,16 @@ def run_one(
             prediction_columns[column] = test[column]
     pd.DataFrame(prediction_columns).to_csv(output / "internal_test_predictions.csv", index=False)
     save_json(
-        {
-            "name": name,
-            "seed": seed,
-            "threshold": threshold,
-            "preprocessing": run_preprocessing,
-            "role": "dataset_bias_control" if name == "file_metadata_control" else "pixel_baseline",
-        },
+        build_baseline_run_metadata(
+            name=name,
+            seed=seed,
+            threshold=threshold,
+            preprocessing=run_preprocessing,
+            manifest=manifest,
+            environment_at_launch=environment_at_launch,
+            requested_options=requested_options,
+            resolved_options=resolved_options,
+        ),
         output / "run.json",
     )
     (output / "internal_test_metrics.json").write_text(
@@ -93,22 +183,33 @@ def main() -> None:
         help="Use legacy mode only to reproduce D0; H1-N controls default to source-normalised rasterisation.",
     )
     args = parser.parse_args()
-    frame = load_manifest(args.manifest, check_paths=True)
+    # Capture process and input identities before the manifest or any image pixels are processed.
+    environment_at_launch = environment_snapshot()
+    requested_options = requested_launch_options(args)
+    manifest_path, manifest_sha256 = manifest_path_and_hash_at_launch(args.manifest)
+    seed_everything(args.seed)
+    frame = load_manifest(manifest_path, check_paths=True)
+    if sha256_file(manifest_path) != manifest_sha256:
+        raise SystemExit("Manifest changed while the baseline launch was starting; rerun it.")
+    manifest = manifest_launch_metadata(manifest_path, manifest_sha256, frame)
+    baselines = selected_baselines(args.only)
+    resolved_options = resolved_launch_options(requested_options, baselines)
     train, val, test = (frame[frame.split == split].copy() for split in ("train", "val", "test"))
-    for name in ("radial_fft_logistic", "file_metadata_control"):
-        if args.only is None or args.only == name:
-            suffix = (
-                f"_{args.preprocessing_protocol}" if name == "radial_fft_logistic" else ""
-            )
-            run_one(
-                name,
-                train,
-                val,
-                test,
-                args.output_root / f"{name}{suffix}_seed{args.seed}",
-                args.seed,
-                args.preprocessing_protocol,
-            )
+    for name in baselines:
+        suffix = f"_{args.preprocessing_protocol}" if name == "radial_fft_logistic" else ""
+        run_one(
+            name,
+            train,
+            val,
+            test,
+            args.output_root / f"{name}{suffix}_seed{args.seed}",
+            args.seed,
+            args.preprocessing_protocol,
+            manifest,
+            environment_at_launch,
+            requested_options,
+            resolved_options,
+        )
 
 
 if __name__ == "__main__":
