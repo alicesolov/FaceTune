@@ -2,7 +2,7 @@
 
 ## Frequency-domain representations for experimental detection of AI-generated images
 
-**Research snapshot:** 31 August 2026; **status:** evidence-bound working draft. Only results
+**Research snapshot:** 2 September 2026; **status:** evidence-bound final research draft. Only results
 marked *observed* have completed metrics; in-progress or pending results are not imputed,
 estimated, or described as completed.
 
@@ -36,7 +36,7 @@ protocol on Apple MPS. Its one-seed exploratory internal result was ROC-AUC 0.88
 accuracy 0.802917, macro-F1 0.704555, and FPR@TPR95 0.482500. It is not a completed RGB-versus-FFT
 comparison, a model-selection candidate, external evidence, or a high-resolution result.
 
-The primary HighRes-v1 study is now frozen around a common 384 x 384 raster from DANI [14]. The
+The primary HighRes-v1 study is frozen around a common 384 x 384 raster from DANI [14]. The
 selected local corpus has 7,410 exact 1024 x 1024 images from 1,482 COCO parent groups: one real
 COCO photograph and four generated conditions per parent. Whole parents form train, validation,
 and internal-test partitions. The original-byte audit found no exact duplicate, cross-label exact
@@ -48,13 +48,17 @@ fresh audit passed all training gates.
 A logistic control using only geometry, encoded size, container, and colour mode obtained
 validation ROC-AUC 0.713427 on the original files and 0.537373 on the canonical RGB PNG files.
 This is observed evidence that acquisition metadata are informative and that canonicalisation
-removes most, but not necessarily all, of that simple shortcut. Internal test was not read. The
-three-seed practical MPS series completed on validation only: its ImageNet-pretrained RGB ResNet-50
-obtained mean ROC-AUC 0.987991 and mean balanced accuracy 0.951233. This practical result does not
-replace the predeclared equal-initialisation RGB-versus-FFT comparison, which remains pending; there
-is not yet a selected model, robustness result, internal-test result, or external result. The local
-prototype therefore remains gated and must eventually display an experimental model score rather
-than a probability or proof.
+removes most, but not necessarily all, of that simple shortcut. The predeclared matched ResNet-50
+comparison then completed on validation only for RGB and FFT from random initialisation over seeds
+7, 17, and 42. FFT was selected by mean validation balanced accuracy (0.787556 versus 0.657138),
+while seed 17 was used as the representative checkpoint by a rule declared before test inspection.
+On the subsequently opened 1,110-image parent-disjoint internal test, the frozen FFT checkpoint
+obtained ROC-AUC 0.893941, balanced accuracy 0.826014, and macro-F1 0.774670. Its group-bootstrap
+95% ROC-AUC interval was 0.871820--0.916324. Robustness testing produced important negative
+evidence: balanced accuracy fell to 0.518581 at JPEG quality 50, 0.476914 after 0.75 resizing,
+0.478604 after 0.50 resizing, and 0.453829 under Gaussian blur. No post-test tuning was performed.
+External Synthbuster + RAISE evaluation remains unavailable, so the local prototype remains gated
+and must not present the score as a probability or proof.
 
 A separate Defactify native384 sensitivity audit was materialised only to test whether canonical
 output geometry and upstream-role preservation remove the observed source shortcut. It retained
@@ -82,7 +86,7 @@ reproducible machine learning; external validation.
 | BAcc | Balanced accuracy, the mean of the two class recalls. |
 | D0 | A diagnostic, legacy-preprocessing control that is retained for audit but excluded from model selection. |
 | H1-N | Historical amended Defactify hypothesis concerning a common 128 x 128 rasterisation and equal-budget RGB/FFT neural models. |
-| HighRes-v1 | Primary DANI study using a source-normalised 384 x 384 raster; the data gate and practical three-seed RGB validation series completed, while representation selection remains pending. |
+| HighRes-v1 | Primary DANI study using a source-normalised 384 x 384 raster; the matched RGB/FFT validation queue, frozen selection, internal test, and robustness stage completed, while external transfer remains pending. |
 | *Model score* | A classifier output before calibration has been established; it is not called a probability. |
 
 ---
@@ -146,9 +150,9 @@ The protocol separates that question from transfer and robustness. The hypothese
 | ID | Hypothesis | Planned evidence |
 | --- | --- | --- |
 | H1-N | Historical incomplete hypothesis: FFT magnitude contains useful signal after geometry-controlled 128 x 128 rasterisation. | The observed radial baseline and one RGB pilot are exploratory only; the matched neural comparison was intentionally stopped. |
-| H1-HR | Under the frozen HighRes-v1 corpus and equal declared budgets, the tested representation has measurable internal association beyond named source strata. | A future pre-registered HighRes-v1 internal experiment with group-aware uncertainty. |
+| H1-HR | Under the frozen HighRes-v1 corpus and equal declared budgets, the tested representation has measurable internal association beyond named source strata. | Completed matched three-seed validation comparison, frozen representative checkpoint, parent-group bootstrap, and generator-stratified internal test. |
 | H2 | A strong internal score does not by itself establish transfer to a new real-photo domain or to external generators with different relationships to training. | A frozen HighRes-v1 model and validation threshold evaluated on Synthbuster synthetic images against the RAISE-1k real-photo subset, reported per generator and training-relation category. |
-| H3 | JPEG compression, resizing, and blur can change an observed signal; train-time robust augmentation may reduce the drop. | A future matched HighRes-v1 clean and transformed evaluation. |
+| H3 | JPEG compression, resizing, and blur can change an observed signal. | Completed frozen-checkpoint evaluation under JPEG Q95/Q75/Q50, 0.75/0.50 resize, and Gaussian blur; no augmentation variant was selected after test inspection. |
 
 H2 and H3 can fail even if a future HighRes-v1 internal result is strong. Such a result would
 constrain the claim rather than invalidate the experiment.
@@ -397,7 +401,7 @@ showed that geometry and canonical PNG byte size almost perfectly separated the 
 path was reclassified as **D0: diagnostic benchmark replication**, not as a detector result. The
 amended H1-N protocol is retained as a historical low-resolution pilot; it is not the primary study.
 
-| Stage | Status on 31 August 2026 | Interpretation rule |
+| Stage | Status on 2 September 2026 | Interpretation rule |
 | --- | --- | --- |
 | D0 legacy radial FFT and metadata control | Observed, historical Defactify diagnostic | Bias diagnostics only; never model-selection or deployment evidence. |
 | H1-N controlled radial FFT logistic regression, seed 7 | Observed | Exploratory internal low-resolution stress-test evidence only. |
@@ -408,8 +412,10 @@ amended H1-N protocol is retained as a historical low-resolution pilot; it is no
 | DANI source metadata control | Observed on validation only | Original/canonical ROC-AUC 0.713427/0.537373; shortcut diagnostic, not detector evidence. |
 | DANI radial FFT logistic baseline | Observed on validation only; test not read | ROC-AUC 0.862972 and BAcc 0.803251 show pixel-frequency signal, but FPR@TPR95 0.376682 and ECE 0.170572 limit practical use. |
 | DANI practical RGB MPS series | Observed for seeds 7/17/42 on validation only; test not read | Mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and no favourable seed selected. |
-| HighRes-v1 robustness study | Not started | May begin only after the HighRes-v1 internal design is frozen. |
-| HighRes-v1 Synthbuster + RAISE-1k external evaluation | Locked, not opened for model selection | Confirmatory transfer evidence only after the HighRes-v1 checkpoint and threshold rule are frozen. |
+| DANI matched RGB/FFT MPS comparison | Observed for both representations and seeds 7/17/42 on validation only | FFT selected by mean validation BAcc 0.787556 versus RGB 0.657138; seed 17 was predeclared as representative. |
+| HighRes-v1 internal test | Observed once after frozen selection | FFT seed 17: ROC-AUC 0.893941, BAcc 0.826014, macro-F1 0.774670; 2,000 parent-group bootstrap resamples. |
+| HighRes-v1 robustness study | Observed in the same terminal evaluation stage | Strong degradation under compression, resizing, and blur; no post-test retraining or threshold change. |
+| HighRes-v1 Synthbuster + RAISE-1k external evaluation | Not evaluated | Required before a deployment or general detector claim. |
 
 ## 4.2 Historical H1-N common rasterisation
 
@@ -513,12 +519,12 @@ clusters. This avoids pretending that several images linked by content/prompt ar
 For model-versus-model comparisons, both prediction tables must contain exactly the same image paths
 and groups, and the comparison bootstraps the metric difference at the group level.
 
-## 4.6 Future HighRes-v1 robustness and external evaluation rules
+## 4.6 HighRes-v1 robustness and external evaluation rules
 
-HighRes-v1 robustness conditions will apply deterministic JPEG qualities 95, 75, and 50, resizing,
-and Gaussian blur only after the common rasterisation step. Results will list each condition
-separately and will not be folded into a clean-score average. A robust-augmentation variant may be
-compared only after its training configuration is declared in the frozen HighRes-v1 protocol.
+HighRes-v1 robustness conditions applied deterministic JPEG qualities 95, 75, and 50, resizing by
+0.75 and 0.50, and Gaussian blur in the predeclared evaluation path. Results list each condition
+separately and are not folded into a clean-score average. Because the test has now been opened, a
+robust-augmentation variant cannot be selected from these outcomes and is not introduced post hoc.
 
 For external evaluation, the HighRes-v1 architecture, preprocessing, selected checkpoint rule,
 seed aggregation, and validation threshold must be frozen. The external report will contrast all
@@ -643,15 +649,15 @@ It also does not establish transfer, robustness, calibration for use, or perform
 | SD 3 | 0.731667 | 0.826813 |
 | SDXL | 0.866458 | 0.939069 |
 
-## 5.5 What the available results do and do not show
+## 5.5 What the historical Defactify results do and do not show
 
 The controlled radial baseline shows that, after a visible geometry shortcut is removed, a
 frequency-domain statistic still has some discriminatory association within the specified benchmark.
 Together with the one RGB pilot, it does **not** show whether FFT is better than RGB: the model
 class, training procedure, and one-seed status differ, and there is no matched FFT neural result.
-It does **not** show robustness to transformations, because no reportable H3 result exists. It does
-**not** show transfer to a new real-photo source or to the external generator-relation categories,
-because H2 is locked.
+The historical Defactify evidence does **not** show robustness to transformations; H3 is evaluated
+only in the later DANI study. It does **not** show transfer to a new real-photo source or to the
+external generator-relation categories, because H2 remains unevaluated.
 
 The correct current conclusion is therefore modest: the historical observations motivate a new
 high-resolution, leakage-audited study, while the large D0 shortcut and generator variation
@@ -706,9 +712,74 @@ better controlled representation because it uses ImageNet pretraining and has no
 | --- | --- | --- |
 | HighRes-v1 practical RGB models | Pretrained ResNet-50, seeds 7/17/42, fixed batch/learning-rate/epoch/patience and parent-paired sampler. | Completed on validation only; mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and test unopened. |
 | HighRes-v1 radial FFT baseline | Deterministic 64-bin log-power features, logistic regression, same common raster, no metadata. | Completed on validation only; ROC-AUC 0.862972 and BAcc 0.803251; test unopened. |
-| HighRes-v1 representation comparison | Group-aware comparison only between models declared before internal test inspection. | Not started. |
-| Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | Not started. |
-| External Synthbuster + RAISE-1k test | Locked until HighRes-v1 architecture, checkpoint rule, seeds, and threshold are frozen; report per generator, relation category, aggregate, and worst-generator values. | Locked, not opened. |
+| HighRes-v1 representation comparison | ResNet-50 from random initialisation for RGB and FFT, seeds 7/17/42, identical raster and optimisation budget. | Completed on validation; FFT mean BAcc 0.787556 versus RGB 0.657138. |
+| Frozen internal test | Validation-selected FFT representation and predeclared representative seed 17; threshold unchanged. | Completed once; ROC-AUC 0.893941, BAcc 0.826014, macro-F1 0.774670. |
+| Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | Completed; severe degradation observed, with no post-test tuning. |
+| External Synthbuster + RAISE-1k test | Frozen model only; report per generator, relation category, aggregate, and worst-generator values. | Not evaluated because the licensed external corpus was not materialised locally. |
+
+## 5.7 Matched RGB-versus-FFT validation comparison
+
+The primary representation experiment trained ResNet-50 from random initialisation for each
+representation and seed. Both arms used the canonical DANI manifest, the 384 x 384 common raster,
+batch size 64, learning rate $10^{-4}$, weight decay $10^{-4}$, a maximum of 15 epochs, validation
+early stopping with patience four, and the parent-paired binary sampler. Internal test metrics were
+absent from all six experiment directories when aggregation and selection were performed.
+
+| Representation | Mean ROC-AUC ± SD | Mean BAcc ± SD | Mean macro-F1 ± SD | Mean FPR@TPR95 ± SD |
+| --- | ---: | ---: | ---: | ---: |
+| FFT | 0.852000 ± 0.100925 | 0.787556 ± 0.079732 | 0.713933 ± 0.122262 | 0.524664 ± 0.277266 |
+| RGB | 0.701965 ± 0.058985 | 0.657138 ± 0.047036 | 0.552717 ± 0.070326 | 0.852018 ± 0.028004 |
+
+FFT won the declared primary criterion, mean validation balanced accuracy. Its larger variance is
+scientifically important: seed 42 was materially weaker than seeds 7 and 17. The selection record
+therefore did not choose the best observed seed. It used seed 17, which had been specified before
+the queue ran, and pinned checkpoint SHA-256
+`0600e1e3346058ad826f61f37515022aad275b221cf9e7c14255d01b57be89c4`. The frozen validation
+threshold was `0.8226767778396606`.
+
+## 5.8 Frozen internal test and robustness
+
+The terminal evaluator first verified the complete RGB/FFT × 3-seed selection record, manifest
+SHA-256, checkpoint SHA-256, representation, preprocessing protocol, and validation threshold. It
+then created a new non-overwritable output directory. Clean and six degradation conditions were
+run in the same terminal stage. No training, checkpoint replacement, representation selection,
+threshold selection, or post-test hyperparameter tuning was available to the command.
+
+**Table 8. Frozen FFT seed-17 clean internal-test result (222 parent groups, 1,110 rows).**
+
+| Metric | Estimate | 95% parent-group bootstrap interval |
+| --- | ---: | ---: |
+| ROC-AUC | 0.893941 | [0.871820, 0.916324] |
+| Balanced accuracy | 0.826014 | [0.800676, 0.851351] |
+| Macro-F1 | 0.774670 | [0.752255, 0.798899] |
+| FPR@TPR95 | 0.409910 | [0.337838, 0.472973] |
+
+At the frozen operating threshold, the confusion counts were TN = 181, FP = 41, FN = 145, and
+TP = 743. ECE was 0.030147 and the Brier score was 0.089432. These calibration summaries describe
+the declared internal distribution; they do not establish calibrated probabilities for arbitrary
+uploads.
+
+Generator-stratified BAcc was 0.889640 for DALL-E 3 T2I, 0.896396 for SDXL T2I, 0.754505 for SDXL
+I2I, and 0.763514 for SDXL TI2I. Thus the aggregate metric hides a clear condition gap. The model
+distinguished text-to-image rows more reliably than the image-conditioned rows in this dataset.
+
+**Table 9. Aggregate robustness metrics using the unchanged validation threshold.**
+
+| Condition | ROC-AUC | BAcc | Macro-F1 | Real recall | AI recall |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Clean | 0.893941 | 0.826014 | 0.774670 | 0.815315 | 0.836712 |
+| JPEG Q95 | 0.822234 | 0.716779 | 0.736664 | 0.500000 | 0.933559 |
+| JPEG Q75 | 0.723521 | 0.559685 | 0.561415 | 0.144144 | 0.975225 |
+| JPEG Q50 | 0.698736 | 0.518581 | 0.484081 | 0.040541 | 0.996622 |
+| Resize 0.75 | 0.380828 | 0.476914 | 0.447567 | 0.027027 | 0.926802 |
+| Resize 0.50 | 0.416144 | 0.478604 | 0.262398 | 0.833333 | 0.123874 |
+| Gaussian blur | 0.430051 | 0.453829 | 0.362177 | 0.585586 | 0.322072 |
+
+JPEG compression systematically shifted scores toward the synthetic class, producing very low
+real recall at Q75 and Q50. The resizing results changed both ordering and operating behaviour; at
+0.50 scale, synthetic recall collapsed instead. Blur reduced ROC-AUC below 0.5. These outcomes
+support H3 but falsify robustness and deployment claims for the selected checkpoint. They are
+reported as final negative evidence, not used as a new training objective after viewing test.
 
 ---
 
@@ -718,9 +789,10 @@ better controlled representation because it uses ImageNet pretraining and has no
 
 A small local web interface is included as a research-facing prototype, not as a public
 authentication service. Its purpose is to make a frozen experimental checkpoint reproducibly
-callable on one uploaded image after a model has passed the predeclared HighRes-v1 selection
-process. At the snapshot date, no completed selected HighRes-v1 checkpoint exists, so the interface
-must not present a working label derived from a historical, smoke-test, or diagnostic model.
+callable on one uploaded image after a model has passed the complete HighRes-v1 selection process.
+A validation-selected and internally evaluated checkpoint now exists, but it failed common
+robustness conditions and has no external transfer result. The inference gate therefore remains
+closed: the interface must not promote it to an authentication service or a deployable detector.
 
 ## 6.2 Intended operation after selection
 
@@ -783,19 +855,29 @@ and one MPS-recorded RGB ResNet-50 pilot. These are historical exploratory resul
 Defactify benchmark. They neither complete the original RGB-versus-FFT comparison nor select a
 deployable model, and they cannot be relabelled as high-resolution evidence.
 
-The next academic phase is no longer data acquisition: DANI has passed lineage, licence,
-materialisation, duplicate, shortcut-normalisation, and split-isolation gates. The original-file
-metadata control showed measurable validation association, and its reduction after canonicalisation
-demonstrates why container support must be separated from pixel evidence. This is a genuine
-negative-and-corrective data result rather than a reason to discard the corpus silently.
+DANI passed lineage, licence, materialisation, duplicate, shortcut-normalisation, and split-isolation
+gates. The original-file metadata control showed measurable validation association, and its
+reduction after canonicalisation demonstrates why container support must be separated from pixel
+evidence. This is a genuine negative-and-corrective data result rather than a reason to discard the
+corpus silently.
 
-The pre-registered practical validation-only MPS series is complete, but it does not open the
-internal test. The equal-initialisation RGB/FFT comparison must first complete, followed by a frozen
-selection rule, group-aware uncertainty, robustness, and locked Synthbuster + RAISE-1k transfer
-evaluation. Until those stages produce a selected and externally assessed checkpoint, the local
-interface remains disabled. The current academic result is therefore a transparent
-limitation-aware baseline, a reproducible high-resolution corpus, and a stable three-seed practical
-validation result—not a claim based on a source shortcut or a favourable pilot epoch.
+The equal-initialisation RGB/FFT comparison is complete. Across validation seeds 7, 17, and 42,
+FFT achieved higher mean balanced accuracy than RGB (0.787556 versus 0.657138) and was selected by
+the frozen rule. The predeclared representative seed-17 checkpoint obtained internal-test ROC-AUC
+0.893941, balanced accuracy 0.826014, and macro-F1 0.774670 with parent-group uncertainty. This is
+a real internal academic result, not a pilot estimate.
+
+The result is nevertheless not suitable for deployment. Performance varied by generator condition,
+and common post-processing caused severe failures. Balanced accuracy fell close to or below chance
+for JPEG Q50, both resize conditions, and Gaussian blur. Because these values were seen only after
+selection, the project does not retrain or change the threshold in response. The negative
+robustness result is part of the conclusion rather than an inconvenience to be hidden.
+
+External Synthbuster + RAISE transfer remains not evaluated because that separately licensed
+corpus was not materialised locally. Consequently, the work supports a narrow statement: a frozen
+FFT ResNet-50 learned an internally reproducible association in the audited DANI distribution, but
+the association is brittle and has not been shown to transfer. The local interface remains gated,
+and no score is described as a probability, proof of provenance, or universal AI detector.
 
 ---
 
@@ -904,7 +986,31 @@ validation threshold, internal predictions, and analysis. It is retained because
 provenance is complete. It remains one low-resolution RGB pilot and is ineligible for selection,
 external evaluation, or the interface.
 
-# Appendix C. Interpretation checklist for any future result
+# Appendix C. Reproducibility record for the DANI frozen evaluation
+
+| Item | Recorded value |
+| --- | --- |
+| Canonical manifest | `artifacts/audits/dani_rgb1024_integrity_v1/training_manifest.csv` |
+| Manifest SHA-256 | `3b88920920add51ef8c55b225817448b759c05a8d5bfc1cee11bc6befced2855` |
+| Selection record | `artifacts/aggregates/dani_rgb_fft_scratch_validation_v1/prototype_selection_record.json` |
+| Selected experiment | `artifacts/experiments/dani_fft_scratch_seed17_validation_v1` |
+| Checkpoint SHA-256 | `0600e1e3346058ad826f61f37515022aad275b221cf9e7c14255d01b57be89c4` |
+| Representation and seed | FFT; representative seed 17 declared before test inspection |
+| Raster protocol | `highres_square_crop_384_v1`: audited 1024 x 1024 RGB PNG, one 384 x 384 LANCZOS downsample, FFT after common raster |
+| Model | ResNet-50 from random initialisation, 23,512,130 trainable parameters |
+| Device and batch size | Apple MPS; batch size 64 |
+| Frozen threshold | `0.8226767778396606`, selected on validation balanced accuracy |
+| Test set | 1,110 images from 222 parent groups: 222 real and 888 synthetic |
+| Uncertainty | 2,000 95% percentile bootstrap resamples, unit = `group_id` |
+| Evaluation output | `artifacts/evaluations/dani_fft_seed17_internal_test_v1` |
+| Result status | `completed_no_post_test_tuning` |
+
+The terminal evaluator refuses an incomplete seed queue, test-informed selection record, manifest
+or checkpoint hash mismatch, threshold mismatch, incompatible preprocessing protocol, an experiment
+already containing internal metrics, or an existing output directory. Its 7,770 prediction rows
+retain all manifest provenance across clean and six degradation conditions.
+
+# Appendix D. Interpretation checklist for any future result
 
 Before a future score is included in the final coursework conclusion or exposed in an interface,
 the following questions must be answered affirmatively:

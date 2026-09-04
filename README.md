@@ -11,9 +11,10 @@ There are three deliberately separate research tracks:
 - **H1-N / Defactify 128 x 128** — a historical low-resolution pilot that established geometry
   controls. Its planned multi-seed series was stopped before completion and is not eligible for
   model selection, external validation or the interface.
-- **HighRes-v1 / 384 x 384** — the primary study is in source-selection and mapping-audit stage.
-  No high-resolution result is claimed until a controlled source, split and materialised files have
-  passed the protocol.
+- **HighRes-v1 / DANI 384 x 384** — the primary matched RGB/FFT validation queue, frozen
+  representation selection, one-time internal test and predeclared robustness stage are complete.
+  FFT seed 17 achieved internal ROC-AUC 0.893941 and balanced accuracy 0.826014, but failed common
+  JPEG/resize/blur conditions. External Synthbuster + RAISE transfer remains not evaluated.
 - **Defactify exploratory native384** — a separate data-quality sensitivity audit. Its strict
   upstream-role split still exposes a file-size shortcut, so it is not a HighRes-v1 substitute,
   model-selection source, external-validation candidate, or interface model.
@@ -56,19 +57,24 @@ uv run jupyter lab
 
 There are deliberately only two notebooks, to keep the research path easy to follow:
 
-1. `notebooks/01_internal_training.ipynb` — environment, data audit, controlled preprocessing,
-   baseline, neural training, and exploratory internal analysis. It will narrate HighRes-v1 after
-   its manifest is frozen; the H1-N cells remain an explicitly labelled historical pilot.
-2. `notebooks/02_external_validation_and_results.ipynb` — locked external validation, robustness,
-   aggregation, and final limitations. Its commands remain gated until HighRes-v1 is frozen.
+1. `notebooks/01_internal_training.ipynb` — canonical DANI audit, shortcut controls, matched
+   validation runs, three-seed aggregates, and the test-blind selection record.
+2. `notebooks/02_external_validation_and_results.ipynb` — immutable clean internal test,
+   parent-bootstrap intervals, generator strata, robustness conditions, and final limitations.
 
-Run them in that order. Each notebook either creates a versioned artifact or reads one created by
-an earlier stage. No notebook contains invented metrics; empty result tables remain empty until a
-run produces them.
+Run them in that order. Both notebooks read versioned machine-readable artifacts, assert their
+protocol gates, and have been executed end-to-end. They do not retrain or tune after test opening.
 
-The current [evidence-bound coursework draft](reports/draft/ai_image_detector_coursework_draft.md)
-is the companion narrative: it labels observed results, diagnostic controls, and pending work
-separately rather than filling future tables in advance.
+The [evidence-bound coursework draft](reports/draft/ai_image_detector_coursework_draft.md) is the
+long-form research ledger. The submission-oriented 2026 source is
+[`reports/tex/ai_image_detector_coursework_2026.tex`](reports/tex/ai_image_detector_coursework_2026.tex).
+After installing Tectonic, rebuild the PDF with:
+
+```bash
+tectonic --outdir output/pdf reports/tex/ai_image_detector_coursework_2026.tex
+```
+
+The generated PDF is intentionally kept outside Git.
 
 ## Historical H1-N commands
 
@@ -239,7 +245,8 @@ scripts/                    # Explicit pipeline entry points listed above
 tests/                      # Unit and smoke tests for claims made by the pipeline
 data/                       # Policy and small provenance/manifests only; raw data is ignored
 artifacts/                  # Ignored runs, checkpoints, predictions and figures
-reports/draft/              # Evidence-bound coursework draft in source form
+reports/draft/              # Evidence-bound research ledger
+reports/tex/                # Submission-oriented 2026 LaTeX report
 reports/generated/          # Ignored rendered report deliverables
 ```
 

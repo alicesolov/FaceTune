@@ -1,0 +1,965 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{english}
+\setotherlanguage{russian}
+\setmainfont{Times New Roman}
+\newfontfamily\russianfont{Times New Roman}
+\usepackage[a4paper,left=30mm,right=20mm,top=20mm,bottom=20mm]{geometry}
+\usepackage{setspace}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{caption}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{xurl}
+
+\definecolor{linkblue}{RGB}{25,76,130}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=linkblue,
+  urlcolor=linkblue,
+  pdftitle={Experimental Detection of AI-Generated Images Using Spatial and Frequency-Domain Representations},
+  pdfauthor={Anna Malyk Germanovna; Alisa Solovyeva Dmitrievna},
+  pdfsubject={Course Project Report, HSE, 2026}
+}
+
+\setstretch{1.35}
+\setlength{\parindent}{1.25cm}
+\setlength{\parskip}{0pt}
+\setlength{\emergencystretch}{2em}
+\setlist{nosep,leftmargin=1.2cm}
+\captionsetup{font=small,labelfont=bf}
+\renewcommand{\arraystretch}{1.2}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\newcolumntype{R}{>{\raggedleft\arraybackslash}p{2.2cm}}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\cfoot{\thepage}
+
+\begin{document}
+\selectlanguage{english}
+\renewcommand{\contentsname}{Contents}
+\renewcommand{\refname}{References}
+
+% The title-page identities follow CourseworkTemplateEng__2_.pdf supplied by the user.
+\begin{titlepage}
+\begin{center}
+\textbf{NATIONAL RESEARCH UNIVERSITY}\\
+\textbf{HIGHER SCHOOL OF ECONOMICS}
+
+\vspace{1.0cm}
+Faculty of Computer Science\\
+Bachelor's Programme ``Applied Mathematics and Informatics''
+
+\vfill
+{\Large\textbf{Course Project Report}}\\[0.5cm]
+{\large on the topic}\\[0.5cm]
+{\Large\textbf{``Experimental Detection of AI-Generated Images\\
+Using Spatial and Frequency-Domain Representations''}}
+
+\vfill
+\begin{tabularx}{\textwidth}{@{}Y Y@{}}
+\textbf{Students:} & \textbf{Supervisor:}\\[0.3cm]
+group \#БПАД234 & Makarov Artem Maksimovich\\
+Anna Malyk Germanovna & Research Fellow,\\
+Alisa Solovyeva Dmitrievna & Faculty of Computer Science, HSE\\
+\end{tabularx}
+
+\vfill
+Moscow 2026
+\end{center}
+\end{titlepage}
+
+\pagenumbering{arabic}
+\setcounter{page}{2}
+\tableofcontents
+\clearpage
+
+\section*{Annotation}
+\addcontentsline{toc}{section}{Annotation}
+
+This coursework studies a narrow and falsifiable version of AI-generated image detection:
+binary classification of real COCO photographs and images produced by declared DANI generator
+conditions. The main objective is not to maximise one attractive score, but to determine whether
+an observed distinction survives dataset auditing, parent-disjoint splitting, matched training,
+and common post-processing. The report therefore separates acquisition shortcuts, validation-only
+model selection, locked internal-test evidence, robustness, and external transfer.
+
+The selected high-resolution corpus contains 7,410 images from 1,482 parent groups. Every group
+contains one real 1024×1024 COCO image and four generated counterparts: DALL-E~3 text-to-image,
+SDXL text-to-image, SDXL image-to-image, and SDXL text-and-image-to-image. An original-byte audit
+found no cross-label exact duplicate or cross-split integrity component, but it identified
+label-dependent JPEG/PNG and colour-mode support. All selected files were therefore converted
+losslessly to a canonical 1024×1024 RGB PNG corpus while retaining source and derived hashes. A
+metadata-only validation control fell from ROC-AUC 0.713427 on original files to 0.537373 on the
+canonical corpus, showing that canonicalisation removed most of this simple shortcut.
+
+The primary experiment compared RGB and FFT-magnitude ResNet-50 models trained from random
+initialisation at seeds 7, 17, and 42. Both representations received the same 384×384 common raster,
+optimisation budget, parent-paired sampler, and Apple MPS device. FFT achieved mean validation
+balanced accuracy 0.787556, compared with 0.657138 for RGB, and was selected by the predeclared
+rule. Seed 17 was fixed in advance as the representative checkpoint. On the subsequently opened
+1,110-image internal test, the frozen FFT model achieved ROC-AUC 0.893941, balanced accuracy
+0.826014, and macro-F1 0.774670. The 95\% parent-group bootstrap interval for ROC-AUC was
+[0.871820, 0.916324].
+
+Robustness testing produced a strong negative result. With the checkpoint and validation threshold
+unchanged, balanced accuracy fell to 0.518581 at JPEG quality 50, 0.476914 after a 0.75 resize,
+0.478604 after a 0.50 resize, and 0.453829 under Gaussian blur. No post-test tuning was performed.
+The results demonstrate a reproducible internal association in the declared DANI distribution,
+but not a robust or general detector. A separately licensed Synthbuster + RAISE transfer corpus
+was not materialised, so external performance remains not evaluated. The local web interface is
+therefore kept behind a frozen-external-validation gate.
+
+\vspace{0.6cm}
+\begin{otherlanguage}{russian}
+\section*{Аннотация}
+
+В работе исследуется узкая и проверяемая постановка задачи распознавания изображений,
+сгенерированных искусственным интеллектом: бинарная классификация реальных фотографий COCO и
+изображений, полученных в заданных конфигурациях генераторов DANI. Основная цель заключается не в
+получении одного максимального показателя, а в проверке того, сохраняется ли обнаруженная связь
+после аудита датасета, разбиения по родительским группам, сопоставимого обучения и типовых
+преобразований изображений.
+
+Итоговый датасет содержит 7,410 изображений из 1,482 родительских групп. В каждой группе имеется
+одна реальная фотография COCO и четыре синтетических варианта. Исходный аудит выявил зависимость
+формата файла и цветового режима от класса, поэтому изображения были приведены без изменения
+пиксельного содержания к единому формату RGB PNG 1024×1024 с сохранением хешей происхождения.
+Модель, использующая только метаданные, снизила ROC-AUC с 0.713427 до 0.537373 после такой
+канонизации.
+
+Основной эксперимент сравнивал ResNet-50 для RGB и амплитудного спектра FFT при одинаковой
+инициализации с нуля, одинаковом растре 384×384 и трёх случайных зернах. По среднему значению
+сбалансированной точности на валидации было выбрано FFT-представление. На закрытой тестовой выборке
+модель достигла ROC-AUC 0.893941 и сбалансированной точности 0.826014. При JPEG-сжатии, повторном
+масштабировании и размытии качество резко снизилось. Поэтому результат подтверждает внутреннюю
+связь в исследованном распределении, но не подтверждает устойчивость, переносимость на другие
+источники или происхождение произвольного изображения.
+\end{otherlanguage}
+\clearpage
+
+\section*{Keywords}
+\addcontentsline{toc}{section}{Keywords}
+
+AI-generated image detection; image forensics; frequency domain; fast Fourier transform; FFT
+magnitude; dataset leakage; canonicalisation; group-disjoint split; ResNet-50; Apple MPS;
+robustness; reproducible machine learning.
+
+\section*{Abbreviations and notation}
+\addcontentsline{toc}{section}{Abbreviations and notation}
+
+\begin{tabularx}{\textwidth}{@{}p{3.2cm}Y@{}}
+\toprule
+Term & Meaning\\
+\midrule
+AI & Artificial intelligence.\\
+FFT & Fast Fourier transform.\\
+RGB & Red, green, and blue image channels.\\
+ROC-AUC & Area under the receiver-operating-characteristic curve.\\
+BAcc & Balanced accuracy: the arithmetic mean of real-class recall and AI-class recall.\\
+FPR@TPR95 & False-positive rate at the first ROC operating point whose true-positive rate is at least 95\%.\\
+ECE & Expected calibration error, calculated here with 15 confidence bins.\\
+T2I / I2I / TI2I & Text-to-image, image-to-image, and text-and-image-to-image generation.\\
+MPS & Apple's Metal Performance Shaders backend used by PyTorch.\\
+Model score & An uncalibrated classifier output; not a probability or proof of origin.\\
+\bottomrule
+\end{tabularx}
+\clearpage
+
+\section{Introduction}
+
+\subsection{Problem statement}
+
+Modern text-to-image and image-to-image systems can produce visually convincing content at low
+cost. This has created demand for tools that assist moderation, media verification, and research.
+The broad phrase ``AI-image detector'', however, can conceal a much narrower statistical task. A
+classifier observes correlations between labels and pixels in the available data. Those
+correlations may arise from synthesis, but they may also arise from image dimensions, encoder,
+file format, colour mode, prompt template, source website, or resizing history. A model that
+separates one benchmark may therefore fail on an edited image or a different generator.
+
+This distinction is important for academic validity. A high random-split score is not sufficient
+when several synthetic images share the same real parent or semantic content. Likewise, a spectral
+model may detect a resampling pipeline rather than an intrinsic property of synthesis. The present
+work treats these failure modes as primary experimental questions. Attractive but confounded
+results are retained as diagnostic evidence and are not relabelled as detector performance.
+
+The target in this study is deliberately limited. It is binary classification between real COCO
+photographs and four declared generated conditions selected from DANI. The work concerns still
+images of general scenes, not face swaps, video deepfakes, authorship attribution, cryptographic
+provenance, or factual verification. A positive decision means only ``AI-like under this frozen
+experimental model and benchmark''. It does not establish how an arbitrary file was created.
+
+\subsection{Aim, object, subject, and tasks}
+
+The \textbf{aim} is to determine whether spatial RGB or frequency-domain FFT representation yields
+stronger and reproducible internal discrimination under a common high-resolution raster, while
+making dataset shortcuts, model-selection rules, uncertainty, and robustness explicit.
+
+The \textbf{object of study} is a grouped collection of real and AI-generated images with declared
+source relationships. The \textbf{subject of study} is the effect of image representation and
+post-processing on the performance of binary classifiers trained under matched conditions.
+
+The following tasks were defined:
+
+\begin{enumerate}
+  \item Review analogous RGB, frequency-domain, cross-generator, and robustness work.
+  \item Audit a candidate corpus before downloading or training and establish licence and lineage.
+  \item Materialise a high-resolution subset that fits the local storage boundary and preserves a
+        demonstrable parent key.
+  \item Detect exact duplicates, near-duplicate candidates, cross-split groups, and non-pixel class
+        shortcuts.
+  \item Construct a canonical 1024×1024 RGB PNG corpus and a parent-disjoint manifest for train,
+        validation, and test.
+  \item Compare metadata and radial FFT controls on validation.
+  \item Train matched RGB and FFT ResNet-50 models from scratch for seeds 7, 17, and 42 using Apple
+        MPS and identical budgets.
+  \item Select a representation from validation aggregates only and use a representative seed
+        declared before test inspection.
+  \item Evaluate the frozen checkpoint once on clean and predeclared degraded test conditions,
+        preserving group-aware uncertainty and generator-specific results.
+  \item Provide a reproducible notebook and a constrained local interface without promoting the
+        result to authentication or general provenance detection.
+\end{enumerate}
+
+\subsection{Research questions and hypotheses}
+
+The primary question is: \emph{under a common 384×384 raster created from audited 1024×1024 source
+images, does an FFT-magnitude ResNet-50 provide stronger validation discrimination than a matched
+RGB ResNet-50, and does the selected signal survive the locked internal test and common
+degradations?}
+
+Three hypotheses were declared:
+
+\begin{description}[style=nextline]
+  \item[H1---representation.] FFT magnitude contains useful discriminative information after both
+  classes have passed through the same canonical rasterisation, and its mean validation BAcc will
+  be compared with the matched RGB result over three seeds.
+  \item[H2---transfer.] A strong internal result does not by itself establish transfer to a new
+  real-photo source or external generator families. This requires a separately locked
+  Synthbuster + RAISE evaluation.
+  \item[H3---robustness.] JPEG compression, resizing, and blur can materially change the learned
+  signal even when the checkpoint and decision threshold remain fixed.
+\end{description}
+
+H1 and H3 can be evaluated locally. H2 remains unevaluated because the external licensed corpus is
+not part of the materialised project. This missing result constrains the conclusion rather than
+being treated as a zero metric or silently omitted.
+
+\subsection{Contribution and report structure}
+
+The contribution is methodological and empirical. The project combines lineage-aware data
+selection, a canonical image-byte audit, parent-disjoint splitting, shortcut controls, a matched
+multi-seed representation experiment, a hash-pinned terminal evaluator, and explicit negative
+robustness evidence. It does not claim a new state of the art.
+
+Section 2 reviews analogous approaches. Section 3 documents collection and auditing. Section 4
+defines preprocessing, training, selection, and evaluation. Section 5 reports results and threats
+to validity. Section 6 describes the research interface and its gate. Section 7 states the final
+conclusion. The appendix records exact reproducibility identifiers and the use of AI assistance.
+
+\section{Review of analogous works}
+
+\subsection{Spatial neural classifiers}
+
+Convolutional neural networks learn spatial filters directly from image pixels. Residual networks
+introduced identity shortcuts that improve optimisation of deep architectures \cite{he2016resnet}.
+ResNet-50 is a useful reference model here because it is widely documented, available in a stable
+PyTorch implementation, and large enough to learn both semantic and textural signals. Its use does
+not imply that residual networks are inherently forensic or that a deeper model guarantees better
+transfer.
+
+RGB detectors can exploit colour, texture, content, and rendering artefacts. The same flexibility
+is a risk: the model can also learn the collection process. Prior synthetic-image detection work
+has repeatedly shown that performance can change under a new generator or a new preprocessing
+pipeline \cite{ricker2022diffusion,corvi2023intriguing}. Consequently, architecture choice must be
+separated from evidence about dataset construction.
+
+\subsection{Frequency-domain evidence}
+
+For a common image raster $x$, the FFT representation in this work is based on shifted log
+magnitude:
+
+\begin{equation}
+  F(x)=\log\left(1+\left|\operatorname{fftshift}(\operatorname{FFT2}(x))\right|\right).
+\end{equation}
+
+Phase is discarded. The magnitude emphasises the distribution of spatial frequencies, which can
+reflect periodic textures, upsampling, denoising, or generator-specific reconstruction. Previous
+work has reported spectral differences between real and synthetic imagery
+\cite{corvi2023intriguing,corvi2023detection}. However, compression and resizing also modify the
+spectrum. Therefore a successful FFT classifier may be detecting an acquisition or transformation
+pipeline rather than a stable synthesis trace.
+
+The comparison in this coursework applies RGB and FFT processing only after the same 384×384 common
+raster is produced. The FFT tensor is normalised to a three-channel model input so that the same
+ResNet-50 architecture can be used in both arms. This removes architecture size and direct source
+geometry as explanations for a representation difference, while not eliminating all possible
+source associations.
+
+\subsection{Cross-generator and degradation benchmarks}
+
+GenImage introduced explicit cross-generator and degraded-image tasks, including compression,
+blur, and low resolution \cite{zhu2023genimage}. These tasks express two distinct questions. The
+first asks whether a representation transfers beyond the generators used for training. The second
+asks whether a signal survives an altered media pipeline. A detector may succeed at one and fail at
+the other.
+
+Synthbuster provides generated imagery from diffusion-model pipelines and was designed for
+detector assessment \cite{bammey2024synthbuster}. A suitable transfer evaluation also requires a
+separate real-photo source; RAISE is a raw-image forensic dataset that can serve this role under its
+research conditions \cite{dangnguyen2015raise}. In this project these external sources are never
+mixed into training or representation selection. Because they were not materialised locally, the
+report makes no external numerical claim.
+
+\subsection{Dataset bias and grouped evaluation}
+
+The DANI dataset provides natural COCO images and synthetic variants across models, resolutions,
+and generation protocols \cite{liu2025djudge,dani2026card}. Its parent-like structure is valuable
+for paired research, but it creates a leakage risk if related images cross partitions. A random
+image split can place a real parent in training and its generated counterpart in validation or
+test. The apparent test then measures memorisation of content as well as synthesis association.
+
+The solution used here is to assign a complete parent group to one split. Exact file hashes,
+decoded-pixel hashes, and perceptual-hash candidates extend the boundary beyond a single metadata
+field. Bootstrap intervals also resample complete parent groups instead of treating the five rows
+in each group as independent observations.
+
+\subsection{Gap addressed by the project}
+
+Many educational projects begin with model training and inspect data problems only after metrics
+look suspicious. This work reverses that order. The data source must pass provenance, licence,
+lineage, geometry, duplicate, split, and shortcut gates before neural training. The model-selection
+command cannot access internal test metrics. The terminal evaluator cannot train, change the
+threshold, replace the checkpoint, or overwrite prior evidence. The resulting score is less broad
+than a generic detector claim but more academically defensible.
+
+\section{Collecting a dataset}
+
+\subsection{Source selection and licence boundary}
+
+DANI was chosen because it provides natural COCO images and multiple generated conditions with
+explicit model, size, and generation-type metadata. The official card describes more than
+445,000 images, several spatial resolutions, and generation modes including T2I, I2I, and TI2I
+\cite{dani2026card}. It is distributed for non-commercial research under CC BY-NC 4.0. The local
+workflow pins the dataset revision and records provenance instead of assuming that a moving online
+dataset is immutable.
+
+The complete dataset was not required for the declared comparison. A 40,GB materialisation cap was
+used. Selection occurred from metadata before image bytes were read. The final subset deliberately
+kept the exact 1024×1024 source level and four generator conditions for each recoverable COCO parent:
+DALL-E~3 T2I, SDXL T2I, SDXL I2I, and SDXL TI2I. This produces a balanced parent structure even
+though the binary class count is four synthetic rows for every real row.
+
+\subsection{Lineage and parent key}
+
+Metadata were first scanned without downloading image bytes. Candidate rows were accepted only
+when their relationship to a common parent could be demonstrated by the DANI metadata workflow.
+The parent COCO image identifier became the grouping key. Each retained group contains exactly one
+real row and four synthetic rows. Groups that did not satisfy the required structure were excluded
+rather than repaired by guessed filename similarity.
+
+The final corpus contains 1,482 groups and 7,410 rows. Complete parent groups were allocated to
+train, validation, and internal test. Table~\ref{tab:split} shows the result.
+
+\begin{table}[ht]
+\centering
+\caption{Parent-disjoint DANI split.}
+\label{tab:split}
+\begin{tabular}{lrrrr}
+\toprule
+Split & Parent groups & Real & Synthetic & Total\\
+\midrule
+Train & 1,037 & 1,037 & 4,148 & 5,185\\
+Validation & 223 & 223 & 892 & 1,115\\
+Internal test & 222 & 222 & 888 & 1,110\\
+\midrule
+Total & 1,482 & 1,482 & 5,928 & 7,410\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+No parent crosses a split. Within each split, all four generated conditions have the same count as
+the real parent count. This makes generator-stratified real-versus-generator evaluation possible
+without changing the real reference set.
+
+\subsection{Original-byte integrity audit}
+
+Downloaded files were decoded and checked against the materialisation manifest. The audit counted
+rows, source cells, dimensions, formats, colour modes, exact file hashes, decoded-pixel hashes, and
+perceptual-hash candidate links. It found:
+
+\begin{itemize}
+  \item zero exact duplicate groups in the selected rows;
+  \item zero cross-label exact duplicate groups;
+  \item zero cross-parent perceptual-hash links at Hamming distance at most four;
+  \item zero integrity components crossing the proposed split;
+  \item exact 1024×1024 geometry for every selected source image.
+\end{itemize}
+
+These findings support the chosen leakage boundary but do not prove the absence of every semantic
+near-duplicate. Perceptual hashes are screening tools, and two visually related images can remain
+outside a distance-four link. The known parent key is therefore still the primary independence
+unit.
+
+\subsection{Shortcut discovery and canonicalisation}
+
+The same audit found that file container and decoded colour-mode support differed between labels.
+Real and synthetic classes did not have identical JPEG/PNG and L/RGB support. A neural model could
+learn codec residue or colour conversion rather than synthesis. Training on the original bytes was
+therefore blocked even though duplicate and split checks passed.
+
+Every selected source was decoded with orientation normalisation, converted to RGB, and written as
+a 1024×1024 PNG without resizing. The derived manifest stores both source and output hashes. The
+integrity audit was then repeated on the canonical corpus and verified uniform PNG/RGB support,
+unchanged row/group structure, and no cross-split integrity component. The frozen training
+manifest SHA-256 is:
+
+\begin{center}
+\small\path{3b88920920add51ef8c55b225817448b759c05a8d5bfc1cee11bc6befced2855}.
+\end{center}
+
+Canonicalisation does not make the corpus bias-free. PNG encoded size can still correlate with
+image content or generator texture. It does, however, prevent format and colour mode from being a
+trivial explicit separator.
+
+\subsection{Metadata shortcut controls}
+
+A class-balanced logistic regression used geometry, encoded size, container, and colour mode but
+no decoded pixels. On the original validation files it achieved ROC-AUC 0.713427 and BAcc
+0.660314. On the canonical files, ROC-AUC fell to 0.537373 and BAcc to 0.573430. Table
+\ref{tab:metadata-control} summarises the result.
+
+\begin{table}[ht]
+\centering
+\caption{Validation-only metadata shortcut controls.}
+\label{tab:metadata-control}
+\begin{tabular}{lrrr}
+\toprule
+Input & ROC-AUC & BAcc & Macro-F1\\
+\midrule
+Original files & 0.713427 & 0.660314 & 0.552612\\
+Canonical RGB PNG & 0.537373 & 0.573430 & 0.509027\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The canonical value remains above 0.5, which is a warning that acquisition associations were
+reduced rather than proven absent. The control is excluded from model selection because it does
+not answer a pixel-representation question.
+
+\section{Methodology, training, and evaluation protocol}
+
+\subsection{Common 384×384 raster}
+
+Every neural input begins from an audited exact 1024×1024 RGB PNG. The image is downsampled once to
+384×384 with Lanczos interpolation. Upsampling is prohibited. Training may apply a horizontal flip
+with probability 0.5 after the common raster is formed. Validation and test transformations are
+deterministic.
+
+The RGB arm normalises the three raster channels using the declared model transform. The FFT arm
+converts the same common raster to grayscale, calculates shifted log magnitude, applies robust
+normalisation, and replicates the result to three channels for ResNet-50. Thus any representation
+difference occurs after shared image decoding and resizing.
+
+\begin{center}
+\fbox{\parbox{0.92\textwidth}{\centering
+Audited 1024×1024 RGB PNG $\rightarrow$ one 384×384 Lanczos raster
+$\rightarrow$ \{RGB normalisation \textbf{or} grayscale FFT log magnitude\}
+$\rightarrow$ matched ResNet-50 $\rightarrow$ model score}}
+\end{center}
+
+\subsection{Model and optimisation contract}
+
+Both primary arms use ResNet-50 with 23,512,130 trainable parameters and random initialisation.
+The matched contract is:
+
+\begin{itemize}
+  \item seeds 7, 17, and 42 for both RGB and FFT;
+  \item batch size 64;
+  \item learning rate $10^{-4}$ and weight decay $10^{-4}$;
+  \item maximum 15 epochs;
+  \item early stopping patience four using validation loss;
+  \item parent-paired binary sampler: one real and one uniformly selected synthetic counterpart
+        from each sampled parent;
+  \item Apple MPS device;
+  \item no internal test scoring during training or selection.
+\end{itemize}
+
+The paired sampler prevents the four-to-one class ratio from turning each epoch into four times as
+many synthetic observations. It also focuses optimisation on within-parent real--synthetic
+differences while leaving the official evaluation distribution unchanged.
+
+\subsection{Apple MPS verification and memory choice}
+
+The local computer reported approximately 40.2~GB as the MPS recommended maximum allocation. A
+direct synthetic ResNet-50 training-step benchmark at 384×384 and batch 16 measured 4.10 images/s
+on CPU and 46.89 images/s on MPS on average: an observed 11.44× compute-loop speed-up. The benchmark
+included host-to-device transfer and synchronised timing but excluded image decoding and data-loader
+cost, so it is not an end-to-end training estimate.
+
+Batch 64 on MPS sustained approximately 43 images/s and used about 20.37,GB of driver-allocated
+memory in the recorded benchmark, below the recommended maximum and consistent with the requested
+approximately 25,GB training budget. The study therefore uses 384×384 rather than the historical
+128×128 raster. A larger raster would increase activation memory roughly with pixel area and reduce
+batch size; 384×384 was retained as a measured compromise, not inferred only from nominal unified
+memory.
+
+\subsection{Baselines and practical RGB series}
+
+Two auxiliary series were kept separate from the matched comparison. First, a deterministic
+64-bin radial log-power FFT representation was fitted with class-balanced logistic regression. It
+obtained validation ROC-AUC 0.862972, BAcc 0.803251, macro-F1 0.810515, FPR@TPR95 0.376682, and ECE
+0.170572. This indicates pixel-frequency association but inadequate calibration and high
+false-positive cost at high recall.
+
+Second, an ImageNet-pretrained RGB ResNet-50 practical series ran over three seeds and produced mean
+validation ROC-AUC 0.987991 and mean BAcc 0.951233. It demonstrates that the corpus and MPS path can
+support a strong practical RGB signal. It is not used in the RGB-versus-FFT decision because FFT
+has no matched ImageNet pretraining prior and the scientific comparison requires equal
+initialisation.
+
+\subsection{Validation-only selection}
+
+The primary selection criterion is mean validation BAcc across all three seeds for each
+representation. Exact ties are resolved by mean validation ROC-AUC and then lexicographic
+representation name. Seed 17 is the representative checkpoint for whichever representation wins;
+the best observed seed is never substituted. The validation threshold for that checkpoint is the
+threshold that maximises validation BAcc.
+
+The aggregation script refuses an incomplete representation/seed queue, unequal run signatures,
+missing validation metrics, or internal test artifacts. The selection record explicitly states
+that internal test metrics were not used. For the selected experiment, the threshold was
+0.8226767778396606 and the checkpoint SHA-256 was:
+
+\begin{center}
+\small\path{0600e1e3346058ad826f61f37515022aad275b221cf9e7c14255d01b57be89c4}.
+\end{center}
+
+\subsection{Metrics and uncertainty}
+
+The report includes ROC-AUC, BAcc, macro-F1, AI precision/recall, real recall, PR-AUC,
+FPR@TPR95, ECE, Brier score, and confusion counts. Accuracy alone is secondary because the test
+contains four synthetic images per real image.
+
+At a fixed threshold $t$, balanced accuracy is
+
+\begin{equation}
+  \operatorname{BAcc}(t)=\frac{1}{2}\left(
+  \frac{TP}{TP+FN}+\frac{TN}{TN+FP}\right).
+\end{equation}
+
+FPR@TPR95 is read from each condition's ROC curve and is descriptive; it does not replace the
+validation-selected operating threshold. Clean uncertainty uses 2,000 percentile bootstrap draws.
+Each draw resamples complete \texttt{group\_id} units, keeping the real row and all relevant
+synthetic counterparts together.
+
+\subsection{Terminal test and robustness gate}
+
+The terminal evaluator validates the selection-record schema and status, the complete seed queue,
+the manifest hash, checkpoint hash, representation, representative seed, preprocessing protocol,
+and threshold. It refuses to proceed if the selected experiment already contains internal metrics
+or if the output directory exists. The command exposes no training, checkpoint, representation, or
+threshold options.
+
+Seven conditions were declared before the terminal run: clean, JPEG Q95, JPEG Q75, JPEG Q50,
+resize 0.75, resize 0.50, and Gaussian blur radius one. Every condition retains row-level manifest
+provenance and the same frozen threshold. Results are not averaged across conditions.
+
+\section{Results and discussion}
+
+\subsection{Matched validation results}
+
+Table~\ref{tab:seed-results} reports all six primary runs. There is no favourable-seed filtering.
+
+\begin{table}[ht]
+\centering
+\caption{Validation metrics for matched from-scratch ResNet-50 runs.}
+\label{tab:seed-results}
+\small
+\begin{tabular}{llrrrr}
+\toprule
+Representation & Seed & ROC-AUC & BAcc & Macro-F1 & FPR@TPR95\\
+\midrule
+FFT & 7  & 0.922203 & 0.843049 & 0.796153 & 0.336323\\
+FFT & 17 & 0.897454 & 0.823430 & 0.772210 & 0.394619\\
+FFT & 42 & 0.736341 & 0.696188 & 0.573436 & 0.843049\\
+RGB & 7  & 0.732917 & 0.675448 & 0.601795 & 0.829596\\
+RGB & 17 & 0.739031 & 0.692265 & 0.584206 & 0.843049\\
+RGB & 42 & 0.633946 & 0.603700 & 0.472148 & 0.883408\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+FFT outperformed RGB on every listed metric at the representation mean, but the FFT arm varied
+substantially between seeds. Its mean ROC-AUC was 0.852000 with sample SD 0.100925; RGB achieved
+0.701965 with SD 0.058985. Mean BAcc was 0.787556 for FFT and 0.657138 for RGB. Table
+\ref{tab:aggregate-results} shows the aggregate.
+
+\begin{table}[ht]
+\centering
+\caption{Three-seed validation aggregates (mean ± sample SD).}
+\label{tab:aggregate-results}
+\scriptsize
+\begin{tabular}{lrrrr}
+\toprule
+Representation & ROC-AUC & BAcc & Macro-F1 & FPR@TPR95\\
+\midrule
+FFT & 0.852000 ± 0.100925 & 0.787556 ± 0.079732 & 0.713933 ± 0.122262 & 0.524664 ± 0.277266\\
+RGB & 0.701965 ± 0.058985 & 0.657138 ± 0.047036 & 0.552717 ± 0.070326 & 0.852018 ± 0.028004\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+H1 is supported within the validation protocol: FFT has the higher mean primary metric under equal
+budget. The large variation prevents a stronger claim that FFT training is stable. The seed-17
+checkpoint is representative by declaration, not because it is numerically best.
+
+\subsection{Frozen clean internal test}
+
+The clean test contains 222 real and 888 synthetic images from 222 parents. Table
+\ref{tab:test-main} reports the frozen FFT seed-17 result and group-bootstrap intervals.
+
+\begin{table}[ht]
+\centering
+\caption{Frozen clean internal-test result.}
+\label{tab:test-main}
+\begin{tabular}{lrr}
+\toprule
+Metric & Estimate & 95\% parent-group interval\\
+\midrule
+ROC-AUC & 0.893941 & [0.871820, 0.916324]\\
+Balanced accuracy & 0.826014 & [0.800676, 0.851351]\\
+Macro-F1 & 0.774670 & [0.752255, 0.798899]\\
+FPR@TPR95 & 0.409910 & [0.337838, 0.472973]\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At threshold 0.822677, the confusion counts were TN=181, FP=41, FN=145, and TP=743. Real recall
+was 0.815315 and AI recall 0.836712. ECE was 0.030147 and the Brier score was 0.089432. The clean
+test ROC-AUC is close to the representative checkpoint's validation ROC-AUC of 0.897454, so there
+is no large aggregate validation-to-test collapse. This agreement is internal to the same source
+and preprocessing distribution.
+
+\subsection{Generator-condition heterogeneity}
+
+Each generator row in Table~\ref{tab:generator} compares all 222 real images with 222 generated
+images from one condition.
+
+\begin{table}[ht]
+\centering
+\caption{Clean internal test by generated condition.}
+\label{tab:generator}
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Condition & ROC-AUC & BAcc & Macro-F1 & FPR@TPR95\\
+\midrule
+DALL-E 3 T2I & 0.947772 & 0.889640 & 0.889027 & 0.157658\\
+SDXL T2I & 0.962747 & 0.896396 & 0.895711 & 0.108108\\
+SDXL I2I & 0.832299 & 0.754505 & 0.753593 & 0.481982\\
+SDXL TI2I & 0.832948 & 0.763514 & 0.762877 & 0.509009\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The model is much stronger on the T2I conditions than on I2I/TI2I. This difference matters because
+an aggregate score is dominated by four synthetic sources and can obscure the weakest condition.
+The finding is consistent with the possibility that image-conditioned generation preserves more
+natural-image frequency structure. It is an interpretation, not a causal demonstration.
+
+\subsection{Robustness results}
+
+Table~\ref{tab:robustness} shows the unchanged checkpoint and threshold under all predeclared
+conditions.
+
+\begin{table}[ht]
+\centering
+\caption{Aggregate robustness results.}
+\label{tab:robustness}
+\small
+\begin{tabular}{lrrrrr}
+\toprule
+Condition & ROC-AUC & BAcc & Macro-F1 & Real recall & AI recall\\
+\midrule
+Clean & 0.893941 & 0.826014 & 0.774670 & 0.815315 & 0.836712\\
+JPEG Q95 & 0.822234 & 0.716779 & 0.736664 & 0.500000 & 0.933559\\
+JPEG Q75 & 0.723521 & 0.559685 & 0.561415 & 0.144144 & 0.975225\\
+JPEG Q50 & 0.698736 & 0.518581 & 0.484081 & 0.040541 & 0.996622\\
+Resize 0.75 & 0.380828 & 0.476914 & 0.447567 & 0.027027 & 0.926802\\
+Resize 0.50 & 0.416144 & 0.478604 & 0.262398 & 0.833333 & 0.123874\\
+Gaussian blur & 0.430051 & 0.453829 & 0.362177 & 0.585586 & 0.322072\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Even high-quality JPEG Q95 reduced BAcc by 0.109235. At Q75 and Q50, the fixed operating point
+shifted strongly toward the AI class: real recall fell to 0.144144 and 0.040541. The model therefore
+flags almost every image as synthetic after stronger JPEG compression. Resize 0.75 produced real
+recall 0.027027, whereas resize 0.50 reversed behaviour and reduced AI recall to 0.123874. Blur
+reduced ROC-AUC to 0.430051 and BAcc below chance.
+
+These are not small calibration shifts. Several transformations change score ordering itself, as
+shown by ROC-AUC below 0.5. H3 is supported. The checkpoint is brittle to the media operations that
+an uploaded web image commonly undergoes. This negative result is central to the conclusion and is
+not used to justify post-test augmentation or a replacement threshold.
+
+\subsection{Comparison with controls}
+
+The canonical metadata control had ROC-AUC 0.537373, the radial FFT logistic baseline 0.862972 on
+validation, the matched FFT ResNet-50 mean 0.852000 across validation seeds, and the frozen neural
+checkpoint 0.893941 on internal test. These values answer different questions. The control measures
+non-pixel acquisition association. The radial baseline measures a fixed 64-bin spectral summary.
+The multi-seed neural series supports representation selection. The terminal test measures one
+predeclared checkpoint after selection. They must not be ranked as if they were exchangeable runs
+on one common test set.
+
+The pretrained RGB practical series achieved a stronger validation aggregate than the matched
+from-scratch series. It is excluded from H1 because its initialisation contains an unmatched prior.
+The result nevertheless suggests that representation is not the only determinant of performance;
+pretraining and learned semantic features may dominate within the same corpus.
+
+\subsection{Threats to validity}
+
+\textbf{Internal validity.} Parent-disjoint splitting, hash audits, and a common raster reduce known
+leakage and geometry shortcuts. They cannot exclude every semantic near-duplicate or correlation
+between content category and generator condition. The remaining canonical metadata control is
+weakly above chance.
+
+\textbf{Statistical validity.} Three seeds provide limited evidence about neural variability. FFT
+seed 42 was substantially weaker, so the mean and SD are both reported. Bootstrap intervals account
+for parent dependence but do not account for uncertainty in dataset construction or generator
+selection.
+
+\textbf{Construct validity.} The benchmark label is not ground-truth provenance for arbitrary
+uploads. The model distinguishes declared collections. It may use generator, codec, content, or
+transformation-specific cues that are legitimate predictors inside DANI but irrelevant elsewhere.
+
+\textbf{External validity.} No cross-dataset evaluation was completed. DANI has only one real-photo
+source in the selected subset and four generated conditions. The result cannot be generalised to
+social-media screenshots, scanned documents, edited photographs, new generators, or unknown
+acquisition pipelines.
+
+\textbf{Operational validity.} Robustness failures directly contradict deployment. A public service
+would also require security review, upload limits, privacy policy, monitoring, and calibrated
+decision costs. Those engineering controls cannot compensate for missing model evidence.
+
+\section{Prototype inference interface}
+
+\subsection{Purpose and current state}
+
+The repository contains a small local web shell for research demonstrations. It is intentionally
+not a public authenticity service. The interface can decode an uploaded image, apply a frozen
+experiment transform, and return a model score together with the threshold, representation,
+experiment name, and checkpoint hash.
+
+The application refuses to serve an arbitrary experiment directory. It requires a separate model
+selection record with schema \path{ai_image_detector_model_selection_v1} and status
+\path{frozen_external_validated}. The current DANI selection record has status
+\path{validation_selected_pending_external_validation}. Therefore the internally evaluated
+checkpoint is not unlocked for the user-facing classifier.
+
+\subsection{Safety and wording}
+
+If a future externally validated record is created, the interface must:
+
+\begin{enumerate}
+  \item verify the checkpoint SHA-256 and preprocessing contract before inference;
+  \item reject malformed, decompression-bomb, or excessively large uploads;
+  \item avoid retaining uploaded images;
+  \item display ``model score'', not ``probability of AI generation'';
+  \item use ``AI-like under this experimental model'' and ``not AI-like under this experimental
+        model'' rather than ``fake'', ``authentic'', or ``proven'';
+  \item display tested generators, external-validation status, and known transformation failures.
+\end{enumerate}
+
+The gate is a deliberate project result. Enabling the best internal model despite failed
+robustness would make the website more visually complete but academically misleading. The current
+shell demonstrates the software boundary without converting a limited experiment into a consumer
+claim.
+
+\subsection{Reproducible software layout}
+
+The repository keeps two notebooks. The first reads the DANI integrity audit, controls, six matched
+validation runs, aggregate, and frozen selection record. The second reads the immutable terminal
+evaluation and reproduces clean, generator-specific, and robustness tables. Both notebooks execute
+from saved machine-readable artifacts and contain assertions for the main protocol gates.
+
+The strict evaluator is covered by tests for test-informed selection rejection, incomplete seed
+queue rejection, checkpoint mismatch, manifest mismatch, provenance-preserving predictions,
+group-level intervals, and overwrite refusal. At the final snapshot, the full suite contained 208
+passing tests.
+
+\section{Conclusion}
+
+This coursework investigated whether frequency-domain representation improves controlled
+real-versus-AI image classification. The work began from a general detector idea but adopted a
+strictly narrower claim after finding dataset shortcuts in earlier material. The final DANI study
+was therefore gated by licence, lineage, exact geometry, duplicate checks, parent-disjoint
+splitting, and acquisition-metadata controls before neural training.
+
+The canonical corpus contains 7,410 1024×1024 RGB PNG images from 1,482 parents. Canonicalisation
+reduced metadata-only validation ROC-AUC from 0.713427 to 0.537373. This is evidence that simple
+file-support association was materially reduced, although not proven absent.
+
+The matched from-scratch comparison completed for RGB and FFT across seeds 7, 17, and 42. FFT had
+the higher mean validation BAcc, 0.787556 versus 0.657138, and was selected according to the frozen
+rule. The predeclared seed-17 checkpoint achieved clean internal-test ROC-AUC 0.893941, BAcc
+0.826014, and macro-F1 0.774670. Parent-group bootstrap intervals excluded chance for the principal
+metrics. H1 is therefore supported within the declared DANI internal distribution.
+
+The same model failed the robustness requirement. JPEG compression caused the fixed threshold to
+classify most real images as synthetic; resizing and blur changed score ordering and reduced BAcc
+to approximately chance or below. This supports H3 and falsifies any claim that the checkpoint is
+ready for uploaded web images. No threshold, architecture, augmentation, or checkpoint was changed
+after observing these results.
+
+H2 remains unresolved. A separately licensed Synthbuster + RAISE corpus was not materialised, so
+the project has no cross-dataset transfer number. The correct final statement is limited: an FFT
+ResNet-50 learned a reproducible internal association in an audited DANI subset, but the signal is
+generator-dependent, brittle to common transformations, and not externally validated. The model
+score is not a calibrated probability or proof of provenance, and the web inference gate remains
+closed.
+
+The academic value lies in the full result, including negative evidence. The project produced a
+reproducible dataset contract, matched multi-seed training, a frozen test, uncertainty intervals,
+and a documented failure under realistic degradation. This is preferable to presenting a strong
+validation score as a universal detector.
+
+\clearpage
+\begin{thebibliography}{99}
+
+\bibitem{he2016resnet}
+K. He, X. Zhang, S. Ren, and J. Sun,
+``Deep Residual Learning for Image Recognition,''
+\emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition},
+pp. 770--778, 2016.
+\href{https://openaccess.thecvf.com/content_cvpr_2016/html/He_Deep_Residual_Learning_CVPR_2016_paper.html}{Available online}.
+
+\bibitem{ricker2022diffusion}
+J. Ricker, S. Damm, T. Holz, and A. Fischer,
+``Towards the Detection of Diffusion Model Deepfakes,'' arXiv:2210.14571, 2022.
+\href{https://arxiv.org/abs/2210.14571}{Available online}.
+
+\bibitem{corvi2023intriguing}
+R. Corvi, D. Cozzolino, G. Poggi, K. Nagano, and L. Verdoliva,
+``Intriguing Properties of Synthetic Images: From Generative Adversarial Networks to Diffusion
+Models,'' arXiv:2304.06408, 2023.
+\href{https://arxiv.org/abs/2304.06408}{Available online}.
+
+\bibitem{corvi2023detection}
+R. Corvi, D. Cozzolino, G. Zingarini, G. Poggi, K. Nagano, and L. Verdoliva,
+``On the Detection of Synthetic Images Generated by Diffusion Models,''
+\emph{IEEE International Conference on Acoustics, Speech and Signal Processing}, 2023.
+\href{https://arxiv.org/abs/2211.00680}{Available online}.
+
+\bibitem{zhu2023genimage}
+M. Zhu, H. Chen, Q. Yan, X. Huang, G. Lin, W. Li, Z. Tu, H. Hu, J. Hu, and Y. Wang,
+``GenImage: A Million-Scale Benchmark for Detecting AI-Generated Image,''
+\emph{Advances in Neural Information Processing Systems}, vol. 36, 2023.
+\href{https://proceedings.neurips.cc/paper_files/paper/2023/hash/f4d4a021f9051a6c18183b059117e8b5-Abstract-Datasets_and_Benchmarks.html}{Available online}.
+
+\bibitem{bammey2024synthbuster}
+Q. Bammey, ``Synthbuster: Towards Detection of Diffusion Model Generated Images,''
+\emph{IEEE Open Journal of Signal Processing}, vol. 5, 2024.
+doi: \href{https://doi.org/10.1109/OJSP.2023.3337714}{10.1109/OJSP.2023.3337714}.
+
+\bibitem{dangnguyen2015raise}
+D.-T. Dang-Nguyen, C. Pasquini, V. Conotter, and G. Boato,
+``RAISE: A Raw Images Dataset for Digital Image Forensics,''
+\emph{Proceedings of the 6th ACM Multimedia Systems Conference}, pp. 219--224, 2015.
+doi: \href{https://doi.org/10.1145/2713168.2713194}{10.1145/2713168.2713194}.
+
+\bibitem{liu2025djudge}
+R. Liu, Z. Lyu, W. Zhou, and S.-K. Ng,
+``D-Judge: How Far Are We? Assessing the Discrepancies Between AI-synthesized Images and Natural
+Images through Multimodal Guidance,'' \emph{ACM International Conference on Multimedia}, 2025.
+\href{https://arxiv.org/abs/2412.17632}{Available online}.
+
+\bibitem{dani2026card}
+Renyang Liu et al., ``DANI: Discrepancy Assessing for Natural and AI Images,'' dataset card,
+revision pinned by the local provenance record, accessed 2026.
+\href{https://huggingface.co/datasets/Renyang/DANI}{Available online}.
+
+\bibitem{pytorch}
+A. Paszke et al., ``PyTorch: An Imperative Style, High-Performance Deep Learning Library,''
+\emph{Advances in Neural Information Processing Systems}, vol. 32, 2019.
+\href{https://papers.neurips.cc/paper/9015-pytorch-an-imperative-style-high-performance-deep-learning-library}{Available online}.
+
+\end{thebibliography}
+
+\clearpage
+\appendix
+\section{Reproducibility record}
+
+\begin{longtable}{@{}p{4.7cm}p{10.2cm}@{}}
+\toprule
+Item & Recorded value\\
+\midrule
+\endfirsthead
+\toprule
+Item & Recorded value\\
+\midrule
+\endhead
+Canonical manifest & \path{artifacts/audits/dani_rgb1024_integrity_v1/training_manifest.csv}\\
+Manifest SHA-256 & \path{3b88920920add51ef8c55b225817448b759c05a8d5bfc1cee11bc6befced2855}\\
+Selection record & \path{artifacts/aggregates/dani_rgb_fft_scratch_validation_v1/prototype_selection_record.json}\\
+Selected experiment & \path{artifacts/experiments/dani_fft_scratch_seed17_validation_v1}\\
+Checkpoint SHA-256 & \path{0600e1e3346058ad826f61f37515022aad275b221cf9e7c14255d01b57be89c4}\\
+Representation & FFT magnitude, representative seed 17\\
+Raster & \path{highres_square_crop_384_v1}; one 384×384 Lanczos downsample from audited 1024×1024 RGB PNG\\
+Model & ResNet-50 from random initialisation; 23,512,130 trainable parameters\\
+Optimisation & Batch 64; learning rate $10^{-4}$; weight decay $10^{-4}$; maximum 15 epochs; patience four\\
+Device & Apple MPS; PyTorch 2.13.0 recorded at launch\\
+Threshold & 0.8226767778396606, selected on validation BAcc\\
+Internal test & 1,110 images from 222 parents; 222 real and 888 synthetic\\
+Uncertainty & 2,000 percentile bootstrap resamples; unit = \path{group_id}; seed 20260829\\
+Terminal output & \path{artifacts/evaluations/dani_fft_seed17_internal_test_v1}\\
+Terminal status & \path{completed_no_post_test_tuning}\\
+Notebooks & \path{notebooks/01_internal_training.ipynb}; \path{notebooks/02_external_validation_and_results.ipynb}\\
+\bottomrule
+\end{longtable}
+
+\section{Interpretation checklist}
+
+Before a future result is used in the interface, all answers must be affirmative:
+
+\begin{enumerate}
+  \item Was the model selected without inspecting the relevant test or external labels?
+  \item Did all compared representations receive the same raster and optimisation budget?
+  \item Were parent, exact-hash, decoded-pixel-hash, and declared near-duplicate boundaries audited?
+  \item Was the decision threshold selected on validation and then frozen?
+  \item Were correlated rows resampled as complete groups?
+  \item Were all declared seeds reported rather than only the strongest seed?
+  \item Were generator-specific and degradation results kept separate from the clean aggregate?
+  \item Was external transfer evaluated on a separately audited and licensed corpus?
+  \item Does the interface describe a model score and its limitations rather than provenance?
+\end{enumerate}
+
+The current project answers ``no'' to item 8. This is why the website remains gated despite a
+completed internal result.
+
+\section{Disclosure of AI assistance}
+
+AI assistance was used to help inspect repository artifacts, draft and refactor code, execute
+tests, organise the report, and check consistency between machine-readable metrics and prose. The
+dataset was not labelled by a language model, and reported numerical results were read from local
+experiment artifacts rather than generated from prose. The evaluator, notebooks, report, and
+citations were reviewed against the repository and supplied templates. Responsibility for the
+experimental design, final claims, source use, and submitted text remains with the authors.
+
+\end{document}
