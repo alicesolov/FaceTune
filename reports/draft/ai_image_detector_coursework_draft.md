@@ -2,7 +2,7 @@
 
 ## Frequency-domain representations for experimental detection of AI-generated images
 
-**Research snapshot:** 29 August 2026; **status:** evidence-bound working draft. Only results
+**Research snapshot:** 30 August 2026; **status:** evidence-bound working draft. Only results
 marked *observed* have completed metrics; in-progress or pending results are not imputed,
 estimated, or described as completed.
 
@@ -47,6 +47,15 @@ external result. The report consequently offers a reproducible protocol and limi
 exploratory observations, not a claim of general AI-image detection. A local prototype is
 deliberately gated on a completed, explicitly selected HighRes-v1 checkpoint and must display an
 experimental model score rather than a probability or proof.
+
+A separate Defactify native384 sensitivity audit was materialised only to test whether canonical
+output geometry and upstream-role preservation remove the observed source shortcut. It retained
+16,328 rows after excluding 36 cross-role leakage components and verified every retained PNG by
+byte and decoded-pixel hash. The non-pixel file-size control nevertheless reached ROC-AUC 0.650114
+and balanced accuracy 0.595238 on the locked upstream test role. Since all final inputs have the
+same 384 x 384 geometry, this is residual PNG/source-pipeline association rather than a detector
+result. No neural model was trained from this corpus; it is recorded as negative evidence that a
+better matched primary source remains necessary.
 
 ## Keywords
 
@@ -245,6 +254,14 @@ SD2.1_selfconditioned. Archive checksums, the authors' source identifiers, a sou
 and a complete byte/pixel/duplicate audit are required before any model training. The project will
 not use an unofficial repack or redistribute raw images, local manifests, or archives.
 
+For a separate Defactify native384 sensitivity audit, one real and one fake were selected per
+caption group, output crops were canonical 384 x 384 RGB PNGs, and the original upstream
+train/validation/test roles were retained after excluding whole leakage components that crossed a
+role. The final artifact contains 16,328 rows; it is not HighRes-v1 because source scale remains
+label-correlated. A file-size-only control on its locked upstream test role gave ROC-AUC 0.650114
+and balanced accuracy 0.595238. This rejects it as a positive training or model-selection corpus
+while retaining it as reproducible negative data-quality evidence.
+
 DANI [14], revision 870e29fcdc13c405fae35442899e9ba1da11691d, is being scanned through its seven
 non-binary metadata fields only: index, declared size, category, class identifier, model,
 generation type, and reference flag. The binary image field is explicitly excluded. This allows a
@@ -359,6 +376,7 @@ amended H1-N protocol is retained as a historical low-resolution pilot; it is no
 | H1-N controlled radial FFT logistic regression, seed 7 | Observed | Exploratory internal low-resolution stress-test evidence only. |
 | H1-N RGB ResNet-50, seed 7 | Observed; launch-time provenance and `mps` device are recorded | A one-seed 128 x 128 pilot, not a completed representation comparison, selection candidate, external-validation candidate, or HighRes-v1 result. |
 | Remaining H1-N RGB seeds and all H1-N FFT ResNet-50 runs | Intentionally stopped | The historical series will not be completed opportunistically after the high-resolution decision. |
+| Defactify native384 data-quality sensitivity audit | Observed; 16,328 retained rows, source/output hash audit passed | File-size-only ROC-AUC 0.650114 and BAcc 0.595238 are residual-bias evidence, not a detector result; no neural model is trained. |
 | HighRes-v1 source acquisition and split | Pre-registered; no final materialised corpus or frozen selection manifest | No HighRes-v1 training or performance result may be claimed. |
 | HighRes-v1 robustness study | Not started | May begin only after the HighRes-v1 internal design is frozen. |
 | HighRes-v1 Synthbuster + RAISE-1k external evaluation | Locked, not opened for model selection | Confirmatory transfer evidence only after the HighRes-v1 checkpoint and threshold rule are frozen. |

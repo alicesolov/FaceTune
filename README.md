@@ -6,7 +6,7 @@ distinguishing real photographs from AI-generated images. It also contains a loc
 point is a reproducible answer to narrowly stated hypotheses, including cases in which an FFT-based
 method fails.
 
-There are two deliberately separate research tracks:
+There are three deliberately separate research tracks:
 
 - **H1-N / Defactify 128 x 128** — a historical low-resolution pilot that established geometry
   controls. Its planned multi-seed series was stopped before completion and is not eligible for
@@ -14,6 +14,9 @@ There are two deliberately separate research tracks:
 - **HighRes-v1 / 384 x 384** — the primary study is in source-selection and mapping-audit stage.
   No high-resolution result is claimed until a controlled source, split and materialised files have
   passed the protocol.
+- **Defactify exploratory native384** — a separate data-quality sensitivity audit. Its strict
+  upstream-role split still exposes a file-size shortcut, so it is not a HighRes-v1 substitute,
+  model-selection source, external-validation candidate, or interface model.
 
 ## Research questions and status
 
@@ -31,6 +34,7 @@ score:
 | Result family | Data | Permitted conclusion |
 | --- | --- | --- |
 | Historical pilot | Defactify grouped 128 x 128 | Exploratory control only; never a provenance claim or model-selection result. |
+| Defactify exploratory audit | Caption-matched native384 Defactify | Negative data-quality evidence only; it documents residual source/pipeline bias and never supplies a detector checkpoint. |
 | HighRes internal | Frozen HighRes-v1 split | Evidence for the named corpus after data and leakage audit. |
 | External | Synthbuster + RAISE-1k | Confirmatory transfer evidence only once a HighRes-v1 model is frozen. |
 | Robustness | Deterministic JPEG, resize, blur transforms | Sensitivity to specified file transformations. |

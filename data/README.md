@@ -28,6 +28,12 @@ source-specific and writes ignored local records under `data/processed/`; no ima
 prompts or Arrow cache are committed. See [the HighRes-v1 protocol](../docs/HIGHRES_V1_PROTOCOL.md)
 for the academic roles and freeze order.
 
+`data/processed/defactify_exploratory_native384_v2/` is deliberately separate from HighRes-v1.
+It is an ignored, hash-locked **negative data-quality sensitivity artifact**: 384 x 384 canonical
+PNG outputs, upstream role preservation, exact source/output-hash isolation, and pHash candidate
+boundaries make the audit reproducible, but they do not erase the original real-versus-synthetic
+source-scale difference. Its file-size control remains a shortcut diagnostic, never a model score.
+
 The completed CommunityForensics-Small metadata audit is preserved as a rejected broad-source
 decision: its strict common 512 x 512 PNG/RGB gate is overwhelmingly synthetic. Its scanner and
 audit remain useful reproducibility evidence, but they must not be used to create a general
