@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
+
+import pandas as pd
 
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
@@ -20,6 +23,7 @@ from ai_image_detector.reproducibility import (
     get_device,
     save_json,
     seed_everything,
+    sha256_file,
 )
 from ai_image_detector.training import (
     LEGACY_LABEL_WEIGHTED_SAMPLER,
@@ -31,6 +35,78 @@ from ai_image_detector.training import (
     resolve_group_column,
     train_sampler_metadata,
 )
+
+MODEL_ARCHITECTURE = "resnet50"
+
+
+def manifest_launch_metadata(manifest_path: Path, frame: pd.DataFrame) -> dict[str, object]:
+    """Describe the immutable input manifest used by an experiment launch."""
+    split_counts = {
+        str(split): int(count)
+        for split, count in frame["split"].value_counts(sort=False).sort_index().items()
+    }
+    return {
+        "resolved_path": str(manifest_path.resolve()),
+        "manifest_sha256": sha256_file(manifest_path),
+        "row_counts": {"total": len(frame), "by_split": split_counts},
+    }
+
+
+def requested_launch_options(args: argparse.Namespace) -> dict[str, object]:
+    """Return the CLI values requested before protocol defaults are resolved."""
+    return {
+        "representation": args.representation,
+        "seed": int(args.seed),
+        "epochs": int(args.epochs),
+        "batch_size": int(args.batch_size),
+        "learning_rate": float(args.learning_rate),
+        "patience": int(args.patience),
+        "preprocessing_protocol": args.preprocessing_protocol,
+        "train_sampler": args.train_sampler,
+        "paired_group_column": args.paired_group_column,
+        "from_scratch": bool(args.from_scratch),
+        "robust_augmentation": bool(args.robust_augmentation),
+        "device": args.device,
+    }
+
+
+def build_model_launch_metadata(
+    *,
+    manifest: dict[str, object],
+    requested_options: dict[str, object],
+    resolved_train_sampler: str,
+    resolved_group_column: str | None,
+    resolved_device: str,
+    environment_at_launch: dict[str, Any],
+    preprocessing: dict[str, object],
+    train_sampler: dict[str, object],
+    trainable_parameters: int,
+) -> dict[str, Any]:
+    """Build JSON-safe launch provenance without coupling it to training side effects."""
+    pretrained = not bool(requested_options["from_scratch"])
+    return {
+        # Retain existing top-level facts so older local tooling can still read model.json.
+        "device": resolved_device,
+        "environment_at_launch": environment_at_launch,
+        "trainable_parameters": int(trainable_parameters),
+        "preprocessing": preprocessing,
+        "train_sampler": train_sampler,
+        # New launch contract: requested CLI values and the resolved protocol are both explicit.
+        "manifest": manifest,
+        "launch_options": {
+            "requested": requested_options,
+            "resolved": {
+                "train_sampler": resolved_train_sampler,
+                "paired_group_column": resolved_group_column,
+                "device": resolved_device,
+            },
+        },
+        "model": {
+            "architecture": MODEL_ARCHITECTURE,
+            "pretrained": pretrained,
+            "trainable_parameters": int(trainable_parameters),
+        },
+    }
 
 
 def main() -> None:
@@ -70,8 +146,13 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    # Capture this before loading data or building a model: a long run must not report a later
+    # repository/environment state simply because it finished after local files changed.
+    environment_at_launch = environment_snapshot()
+    launch_options = requested_launch_options(args)
     seed_everything(args.seed)
     frame = load_manifest(args.manifest, check_paths=True)
+    manifest = manifest_launch_metadata(args.manifest, frame)
     required = {"train", "val", "test"}
     missing = required.difference(frame["split"])
     if missing:
@@ -142,17 +223,30 @@ def main() -> None:
     device = get_device(args.device)
     model = build_resnet50(pretrained=not args.from_scratch)
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    sampler_metadata = train_sampler_metadata(train_loader)
     save_json(
-        {
-            "device": str(device),
-            "environment_at_launch": environment_snapshot(),
-            "trainable_parameters": trainable_parameter_count(model),
-            "preprocessing": preprocessing,
-            "train_sampler": train_sampler_metadata(train_loader),
-        },
+        build_model_launch_metadata(
+            manifest=manifest,
+            requested_options=launch_options,
+            resolved_train_sampler=train_sampler,
+            resolved_group_column=paired_group_column,
+            resolved_device=str(device),
+            environment_at_launch=environment_at_launch,
+            preprocessing=preprocessing,
+            train_sampler=sampler_metadata,
+            trainable_parameters=trainable_parameter_count(model),
+        ),
         args.output_dir / "model.json",
     )
-    model, _, threshold = fit(model, train_loader, val_loader, config, device, args.output_dir)
+    model, _, threshold = fit(
+        model,
+        train_loader,
+        val_loader,
+        config,
+        device,
+        args.output_dir,
+        environment_at_launch=environment_at_launch,
+    )
     _, metrics = evaluate_and_save(
         model, test_loader, device, threshold, args.output_dir, "internal_test"
     )

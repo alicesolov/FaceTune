@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -241,8 +242,14 @@ def fit(
     config: TrainConfig,
     device: torch.device,
     output_dir: str | Path,
+    *,
+    environment_at_launch: dict[str, Any] | None = None,
 ) -> tuple[nn.Module, pd.DataFrame, float]:
     """Fit using validation loss only; returns validation predictions and its frozen threshold."""
+    if environment_at_launch is None:
+        # Direct callers retain a self-contained artifact, while the CLI injects the snapshot it
+        # took before any potentially long data/model setup.
+        environment_at_launch = environment_snapshot()
     seed_everything(config.seed)
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -338,7 +345,7 @@ def fit(
                 "choice": config.train_sampler,
                 "paired_group_column": config.paired_group_column,
             },
-            "environment": environment_snapshot(),
+            "environment_at_launch": environment_at_launch,
             "threshold": threshold,
         },
         output / "run.json",
