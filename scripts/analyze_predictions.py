@@ -103,6 +103,7 @@ def main() -> None:
         "bootstrap": {
             "unit": "leakage_group",
             "repeats_requested": args.bootstrap_repeats,
+            "seed": args.seed,
             "confidence": 0.95,
             "metrics": intervals,
         },
@@ -124,6 +125,9 @@ def main() -> None:
                 "status": "exploratory_internal_stress_test",
                 "difference": f"{args.experiment_dir.name} minus {args.compare_to.name}",
                 "bootstrap_unit": "leakage_group",
+                "bootstrap_repeats_requested": args.bootstrap_repeats,
+                "bootstrap_seed": args.seed,
+                "bootstrap_confidence": 0.95,
                 "metrics": comparison,
             },
             output / "paired_comparison.json",
