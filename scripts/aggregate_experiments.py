@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import subprocess
 from pathlib import Path
 
 import pandas as pd
@@ -16,6 +17,13 @@ REPRESENTATIVE_SEED = 17
 OFFICIAL_REPRESENTATIONS = ("fft", "rgb")
 OFFICIAL_SEEDS = (7, 17, 42)
 PROTOTYPE_SELECTION_SCHEMA = "ai_image_detector_validation_selection_v1"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TRAINING_CODE_PATHS = (
+    "scripts/run_experiment.py",
+    "src/ai_image_detector",
+    "pyproject.toml",
+    "uv.lock",
+)
 
 
 def load_json_object(path: Path, artifact_name: str) -> dict[str, object]:
@@ -234,8 +242,55 @@ def run_signature(run: dict[str, object], model: dict[str, object]) -> dict[str,
                 "resolved": resolved,
             },
             "model": model_specification,
-            "environment_at_launch": environment,
+            # Git revision is verified separately against training-code paths. Documentation-only
+            # commits may legitimately occur while a long multi-seed series is running.
+            "environment_at_launch": {
+                key: value for key, value in environment.items() if key != "git_revision"
+            },
         },
+    }
+
+
+def verify_training_code_revision_equivalence(
+    experiment_inputs: list[
+        tuple[Path, dict[str, object], dict[str, object], dict[str, float]]
+    ],
+) -> dict[str, object]:
+    """Prove that differing launch commits changed no training-code path.
+
+    Long seed series can overlap a documentation/notebook commit. Treating any HEAD change as a
+    model-protocol change would discard valid compute, while silently ignoring revisions would be
+    too weak. This gate records every revision and asks Git whether the frozen training paths differ.
+    """
+    revisions: list[str] = []
+    for experiment_dir, _, model, _ in experiment_inputs:
+        environment = model.get("environment_at_launch")
+        revision = environment.get("git_revision") if isinstance(environment, dict) else None
+        if not isinstance(revision, str) or not revision.strip():
+            raise SystemExit(f"Missing launch git revision in {experiment_dir}")
+        revisions.append(revision)
+    unique_revisions = tuple(dict.fromkeys(revisions))
+    base = unique_revisions[0]
+    for revision in unique_revisions[1:]:
+        result = subprocess.run(
+            ["git", "diff", "--quiet", base, revision, "--", *TRAINING_CODE_PATHS],
+            cwd=PROJECT_ROOT,
+            check=False,
+        )
+        if result.returncode == 1:
+            raise SystemExit(
+                "Experiment launch revisions differ in frozen training-code paths: "
+                f"{base} versus {revision}"
+            )
+        if result.returncode != 0:
+            raise SystemExit(
+                "Could not verify training-code equivalence between launch revisions "
+                f"{base} and {revision}"
+            )
+    return {
+        "launch_git_revisions": list(unique_revisions),
+        "checked_paths": list(TRAINING_CODE_PATHS),
+        "training_code_equal_across_revisions": True,
     }
 
 
@@ -477,6 +532,9 @@ def main() -> None:
     per_seed_validation = pd.DataFrame(validation_records).sort_values(["representation", "seed"])
     validation_aggregate = aggregate_by_representation(per_seed_validation)
     assert signature is not None
+    signature["revision_equivalence"] = verify_training_code_revision_equivalence(
+        experiment_inputs
+    )
     prototype_selection = build_prototype_selection(
         per_seed_validation, validation_aggregate, signature
     )

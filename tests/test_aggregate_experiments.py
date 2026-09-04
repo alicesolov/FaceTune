@@ -38,6 +38,7 @@ def write_experiment(
     validation_threshold: float | None = 0.5,
     write_validation: bool = True,
     write_analysis: bool = True,
+    git_revision: str = "training-pipeline-revision",
 ) -> Path:
     experiment = root / f"{representation}_seed{seed}"
     experiment.mkdir(parents=True)
@@ -71,7 +72,7 @@ def write_experiment(
     }
     model = {
         "device": "mps",
-        "environment_at_launch": {"git_revision": "training-pipeline-revision"},
+        "environment_at_launch": {"git_revision": git_revision},
         "manifest": {
             "resolved_path": "/relocated/project/data/manifest.csv",
             "manifest_sha256": "manifest-sha256",
@@ -188,6 +189,54 @@ def test_single_representation_emits_validation_aggregate_without_decision(
     assert record["selection_rule"]["kind"] == "prototype_selection_rule_not_external_validation"
     assert "no best seed" in payload["selection_rule"].lower()
     assert (output / "generator_metric_mean_std.csv").is_file()
+
+
+def test_revision_equivalence_is_verified_only_for_training_paths(
+    tmp_path: Path, monkeypatch
+) -> None:
+    first = write_experiment(
+        tmp_path,
+        "rgb",
+        7,
+        internal_score=0.7,
+        validation_score=0.6,
+        git_revision="revision-a",
+    )
+    second = write_experiment(
+        tmp_path,
+        "rgb",
+        17,
+        internal_score=0.8,
+        validation_score=0.7,
+        git_revision="revision-b",
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_: object) -> object:
+        calls.append(command)
+        return type("Completed", (), {"returncode": 0})()
+
+    monkeypatch.setattr(aggregate_experiments.subprocess, "run", fake_run)
+    output = tmp_path / "aggregate"
+
+    run_aggregate(monkeypatch, output, first, second)
+
+    payload = json.loads((output / "aggregate_summary.json").read_text(encoding="utf-8"))
+    equivalence = payload["signature"]["revision_equivalence"]
+    assert equivalence["launch_git_revisions"] == ["revision-a", "revision-b"]
+    assert equivalence["checked_paths"] == list(aggregate_experiments.TRAINING_CODE_PATHS)
+    assert equivalence["training_code_equal_across_revisions"] is True
+    assert calls == [
+        [
+            "git",
+            "diff",
+            "--quiet",
+            "revision-a",
+            "revision-b",
+            "--",
+            *aggregate_experiments.TRAINING_CODE_PATHS,
+        ]
+    ]
 
 
 def test_multiple_representations_select_by_validation_not_internal_test(
