@@ -43,7 +43,17 @@ DUPLICATE_COLUMNS: Final = (
     "selection_ids",
 )
 TRAINING_COLUMNS: Final = (
-    *dani_materialize.MATERIALIZED_COLUMNS,
+    *(column for column in dani_materialize.MATERIALIZED_COLUMNS if column != "leakage_group"),
+    "path",
+    "group_id",
+    "source_id",
+    "sha256",
+    "phash",
+    "source_sha256",
+    "source_pixel_sha256",
+    "source_phash",
+    "parent_group",
+    "leakage_group",
     "integrity_component",
 )
 
@@ -80,6 +90,43 @@ def _write_json(path: Path, payload: Mapping[str, object]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _portable_image_path(materialized_dir: Path, relative_path: str) -> str:
+    """Prefer a repository-relative path while retaining support for external audit roots."""
+    absolute = (materialized_dir / relative_path).resolve()
+    try:
+        return absolute.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return str(absolute)
+
+
+def _training_row(
+    row: Mapping[str, str],
+    *,
+    materialized_dir: Path,
+    integrity_component: str,
+) -> dict[str, str]:
+    """Adapt frozen DANI evidence to the generic training-manifest contract."""
+    parent_group = row["leakage_group"]
+    encoded_sha = row["encoded_sha256"]
+    pixel_sha = row["decoded_pixel_sha256_rgb"]
+    phash = row["decoded_phash_rgb"]
+    return {
+        **row,
+        "path": _portable_image_path(materialized_dir, row["materialized_path"]),
+        "group_id": parent_group,
+        "source_id": row["selection_id"],
+        "sha256": encoded_sha,
+        "phash": phash,
+        "source_sha256": encoded_sha,
+        "source_pixel_sha256": pixel_sha,
+        "source_phash": phash,
+        "parent_group": parent_group,
+        # The connected component, rather than only the COCO parent, is the split-isolation key.
+        "leakage_group": integrity_component,
+        "integrity_component": integrity_component,
+    }
 
 
 def _load_materialized(materialized_dir: Path) -> tuple[list[dict[str, str]], dict[str, object]]:
@@ -292,8 +339,13 @@ def audit_integrity(
             writer = csv.DictWriter(handle, fieldnames=TRAINING_COLUMNS, extrasaction="raise")
             writer.writeheader()
             for index, row in enumerate(rows):
+                component = component_ids[union_find.find(index)]
                 writer.writerow(
-                    {**row, "integrity_component": component_ids[union_find.find(index)]}
+                    _training_row(
+                        row,
+                        materialized_dir=source,
+                        integrity_component=component,
+                    )
                 )
     created_at = (datetime.now(UTC) if now is None else now).astimezone(UTC).isoformat()
     summary: dict[str, object] = {

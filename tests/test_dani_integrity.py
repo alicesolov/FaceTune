@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from ai_image_detector import dani, dani_integrity, dani_materialize, dani_selection
+from ai_image_detector.manifest import load_manifest
 
 
 def _row(
@@ -142,7 +143,24 @@ def test_integrity_audit_emits_training_manifest_when_gates_pass(tmp_path: Path)
 
     assert report["eligibility"]["eligible_for_training"] is True
     assert report["counts"]["cross_split_integrity_component_count"] == 0
-    assert (tmp_path / "audit" / dani_integrity.TRAINING_MANIFEST_NAME).is_file()
+    training_path = tmp_path / "audit" / dani_integrity.TRAINING_MANIFEST_NAME
+    assert training_path.is_file()
+    training = load_manifest(training_path, check_paths=True)
+    assert len(training) == 4
+    assert {
+        "sha256",
+        "phash",
+        "source_sha256",
+        "source_pixel_sha256",
+        "source_phash",
+        "parent_group",
+        "leakage_group",
+        "integrity_component",
+    }.issubset(training.columns)
+    assert training["source_id"].tolist() == training["selection_id"].tolist()
+    assert training["group_id"].tolist() == training["parent_group"].tolist()
+    assert training["leakage_group"].tolist() == training["integrity_component"].tolist()
+    assert training.groupby("parent_group")["leakage_group"].nunique().eq(1).all()
 
 
 def test_integrity_audit_blocks_cross_split_near_duplicate_component(tmp_path: Path) -> None:
