@@ -14,11 +14,11 @@ from ai_image_detector.baselines import (
     fit_file_metadata_logistic,
     fit_radial_logistic,
     radial_predict,
+    radial_preprocessing_metadata,
 )
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
-    preprocessing_metadata,
 )
 from ai_image_detector.manifest import load_manifest
 from ai_image_detector.metrics import binary_metrics, choose_threshold
@@ -39,7 +39,9 @@ def run_one(
             train, seed=seed, preprocessing_protocol=preprocessing_protocol
         )
         predict = partial(radial_predict, preprocessing_protocol=preprocessing_protocol)
-        run_preprocessing: dict[str, object] | None = preprocessing_metadata(preprocessing_protocol)
+        run_preprocessing: dict[str, object] | None = radial_preprocessing_metadata(
+            preprocessing_protocol
+        )
     elif name == "file_metadata_control":
         model = fit_file_metadata_logistic(train, seed=seed)
         predict = file_metadata_predict

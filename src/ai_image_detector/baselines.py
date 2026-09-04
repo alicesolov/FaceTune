@@ -21,13 +21,33 @@ from .features import (
 )
 
 
+def radial_preprocessing_metadata(protocol: str) -> dict[str, object]:
+    """Describe the raster actually used by the deterministic radial baseline.
+
+    H1-N neural training uses an epoch-specific random crop, whereas this linear baseline extracts
+    one fixed feature vector per image before fitting.  It therefore uses the centre crop on every
+    split and must not inherit the neural train-crop metadata unchanged.
+    """
+    metadata = preprocessing_metadata(protocol)
+    if protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
+        metadata["train_crop"] = "center_square_crop"
+        metadata["eval_crop"] = "center_square_crop"
+        metadata["crop_policy"] = "deterministic_center_square_all_splits"
+        metadata["augmentation"] = "none"
+    return metadata
+
+
 def radial_features(
     frame: pd.DataFrame,
     bins: int = 64,
     preprocessing_protocol: str = LEGACY_PREPROCESSING_PROTOCOL,
 ) -> np.ndarray:
-    """Compute radial FFT features under an explicitly declared rasterisation contract."""
-    preprocessing = preprocessing_metadata(preprocessing_protocol)
+    """Compute one deterministic radial FFT feature vector per image.
+
+    Controlled H1-N runs centre-crop all three splits before feature extraction; stochastic crops
+    would make a fixed linear-feature fit non-reproducible unless they were separately recorded.
+    """
+    preprocessing = radial_preprocessing_metadata(preprocessing_protocol)
     image_size = int(preprocessing["image_size"])
     rows: list[np.ndarray] = []
     for path in tqdm(frame["path"], desc="radial FFT features"):

@@ -6,6 +6,7 @@ from ai_image_detector.baselines import (
     fit_file_metadata_logistic,
     image_file_features,
     radial_features,
+    radial_preprocessing_metadata,
 )
 from ai_image_detector.features import CONTROLLED_PREPROCESSING_PROTOCOL
 
@@ -38,3 +39,11 @@ def test_controlled_radial_features_use_a_common_square_raster(tmp_path) -> None
     )
 
     assert features.shape == (2, 8)
+
+
+def test_controlled_radial_metadata_records_deterministic_crop_for_all_splits() -> None:
+    metadata = radial_preprocessing_metadata(CONTROLLED_PREPROCESSING_PROTOCOL)
+
+    assert metadata["train_crop"] == "center_square_crop"
+    assert metadata["eval_crop"] == "center_square_crop"
+    assert metadata["crop_policy"] == "deterministic_center_square_all_splits"
