@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from ai_image_detector.dani_materialize import materialize_core
+from ai_image_detector.dani_materialize import make_range_downloader, materialize_core
 from ai_image_detector.dani_selection import MATERIALISATION_BYTE_BUDGET
 
 
@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--staging-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--byte-cap", type=int, default=MATERIALISATION_BYTE_BUDGET)
+    parser.add_argument("--download-workers", type=int, default=8)
     return parser.parse_args()
 
 
@@ -29,6 +30,7 @@ def main() -> None:
         args.core_dir,
         args.staging_dir,
         args.output_dir,
+        downloader=make_range_downloader(workers=args.download_workers),
         byte_cap=args.byte_cap,
         progress=progress,
     )

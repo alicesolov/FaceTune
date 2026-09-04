@@ -138,7 +138,9 @@ def _fixture(tmp_path: Path, *, second_size: int = 1024) -> tuple[Path, Path]:
 
 
 def _downloader(source_shard: Path):
-    def download(shard_path: str, staging: Path) -> Path:
+    def download(shard_path: str, staging: Path, expected_size: int, expected_sha256: str) -> Path:
+        assert expected_size == source_shard.stat().st_size
+        assert expected_sha256 == dani.sha256_file(source_shard)
         target = staging / shard_path
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source_shard, target)

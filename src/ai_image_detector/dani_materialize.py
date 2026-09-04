@@ -41,7 +41,7 @@ MATERIALIZED_COLUMNS: Final = (
     *MATERIALIZED_EXTRA_COLUMNS,
 )
 
-Downloader = Callable[[str, Path], Path]
+Downloader = Callable[[str, Path, int, str], Path]
 ProgressCallback = Callable[[str], None]
 
 
@@ -125,7 +125,9 @@ def _load_core_plan(
     return selection, shards, provenance
 
 
-def _default_downloader(shard_path: str, staging_dir: Path) -> Path:
+def _default_downloader(
+    shard_path: str, staging_dir: Path, expected_size: int, expected_sha256: str
+) -> Path:
     downloaded = hf_hub_download(
         repo_id=dani.REPOSITORY_ID,
         filename=shard_path,
@@ -134,6 +136,34 @@ def _default_downloader(shard_path: str, staging_dir: Path) -> Path:
         local_dir=staging_dir,
     )
     return Path(downloaded)
+
+
+def make_range_downloader(*, workers: int = 8) -> Downloader:
+    """Create a direct pinned-HTTPS downloader with resumable parallel byte ranges."""
+    if workers <= 0:
+        raise ValueError("range download workers must be positive")
+
+    def download(
+        shard_path: str,
+        staging_dir: Path,
+        expected_size: int,
+        expected_sha256: str,
+    ) -> Path:
+        from .range_download import download_range_file
+
+        url = (
+            f"https://huggingface.co/datasets/{dani.REPOSITORY_ID}/resolve/"
+            f"{dani.PINNED_REVISION}/{shard_path}"
+        )
+        return download_range_file(
+            url,
+            staging_dir / shard_path,
+            expected_size=expected_size,
+            expected_sha256=expected_sha256,
+            workers=workers,
+        )
+
+    return download
 
 
 def _verify_shard(path: Path, expected_size: int, expected_sha256: str) -> None:
@@ -309,6 +339,8 @@ def materialize_core(
                 if row["shard_path"] == shard_path and row["selection_id"] not in completed_ids
             ]
             local_path = staging / shard_path
+            expected_size = int(shard["expected_size_bytes"])
+            expected_sha256 = shard["expected_sha256"]
             if not shard_selection:
                 if local_path.is_file():
                     local_path.unlink()
@@ -316,13 +348,17 @@ def materialize_core(
             if not local_path.is_file():
                 if progress is not None:
                     progress(f"download {shard_path}")
-                local_path = fetch(shard_path, staging)
-            expected_size = int(shard["expected_size_bytes"])
+                projected_download_peak = (
+                    _directory_bytes(staging) + _directory_bytes(destination) + 2 * expected_size
+                )
+                if projected_download_peak > byte_cap:
+                    raise ValueError("Parallel range staging would exceed the hard byte cap")
+                local_path = fetch(shard_path, staging, expected_size, expected_sha256)
             if _directory_bytes(staging) + _directory_bytes(destination) > byte_cap:
                 raise ValueError("DANI staging plus materialised bytes exceed the hard cap")
             if progress is not None:
                 progress(f"verify {shard_path}")
-            _verify_shard(local_path, expected_size, shard["expected_sha256"])
+            _verify_shard(local_path, expected_size, expected_sha256)
             current_total_bytes = _directory_bytes(staging) + _directory_bytes(destination)
 
             import pyarrow.parquet as pq
