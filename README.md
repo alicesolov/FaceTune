@@ -100,15 +100,18 @@ protocol for exact hypotheses, metrics and threats to validity.
 
 ## Local research interface
 
-After a completed experiment has been explicitly selected, serve it locally with the exact
-preprocessing and validation-selected threshold used in research:
+After a completed experiment has been explicitly selected and externally validated, serve it
+locally with the exact preprocessing and validation-selected threshold used in research:
 
 ```bash
-AI_IMAGE_DETECTOR_EXPERIMENT_DIR=artifacts/<selected-experiment> .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
+AI_IMAGE_DETECTOR_SELECTION_RECORD=artifacts/model_selections/<selected-model>.json .venv/bin/uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
 The interface never stores uploaded images and calls the output a **model score**, not a
-probability or proof of provenance. It deliberately refuses to start without a completed selected
-experiment, so the smoke-test checkpoint cannot accidentally be presented as a working detector.
+probability or proof of provenance. It deliberately refuses to start without a hash-pinned,
+`frozen_external_validated` selection record. The JSON record must use schema
+`ai_image_detector_model_selection_v1` and contain `experiment_dir`, `checkpoint_sha256`, and the
+required `selection_status`; the hash must match the selected H1-N checkpoint. This prevents the
+smoke-test or a legacy/partial checkpoint from being accidentally presented as a working detector.
 It is intentionally local: serving the PyTorch model needs the same runtime as the research
 environment; this repository does not deploy it to a public web host.

@@ -19,12 +19,15 @@ startup_error: str | None = None
 @app.on_event("startup")
 def load_selected_experiment() -> None:
     global bundle, startup_error
-    directory = os.environ.get("AI_IMAGE_DETECTOR_EXPERIMENT_DIR")
-    if not directory:
-        startup_error = "Set AI_IMAGE_DETECTOR_EXPERIMENT_DIR to a completed, selected experiment."
+    selection_record = os.environ.get("AI_IMAGE_DETECTOR_SELECTION_RECORD")
+    if not selection_record:
+        startup_error = (
+            "Set AI_IMAGE_DETECTOR_SELECTION_RECORD to a hash-pinned, "
+            "frozen_external_validated selection record."
+        )
         return
     try:
-        bundle = ModelBundle.load(directory)
+        bundle = ModelBundle.load_selected(selection_record)
     except ExperimentLoadError as error:
         startup_error = str(error)
 

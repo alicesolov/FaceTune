@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ import torch
 from PIL import Image
 
 from .features import (
+    CONTROLLED_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
     FFTTransform,
     RGBTransform,
@@ -22,6 +24,58 @@ from .reproducibility import get_device, sha256_file
 
 class ExperimentLoadError(ValueError):
     """Raised when an experiment directory is incomplete or not eligible for serving."""
+
+
+SELECTION_RECORD_SCHEMA = "ai_image_detector_model_selection_v1"
+FROZEN_EXTERNAL_VALIDATION_STATUS = "frozen_external_validated"
+
+
+@dataclass(frozen=True)
+class ModelSelectionRecord:
+    """Explicit, hash-pinned human selection required before local serving."""
+
+    record_path: Path
+    experiment_dir: Path
+    checkpoint_sha256: str
+
+
+def load_selection_record(path: str | Path) -> ModelSelectionRecord:
+    """Load an auditable record that intentionally unlocks one research demo model.
+
+    A checkpoint directory by itself is not a serving authorization.  The record makes the choice
+    reviewable and prevents accidentally exposing a smoke run or a partially completed experiment.
+    """
+    record_path = Path(path).resolve()
+    if not record_path.is_file():
+        raise ExperimentLoadError("The model selection record does not exist")
+    try:
+        payload = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ExperimentLoadError("The model selection record must be valid JSON") from error
+    if not isinstance(payload, dict):
+        raise ExperimentLoadError("The model selection record must be a JSON object")
+    if payload.get("schema_version") != SELECTION_RECORD_SCHEMA:
+        raise ExperimentLoadError("Unsupported model selection record schema")
+    if payload.get("selection_status") != FROZEN_EXTERNAL_VALIDATION_STATUS:
+        raise ExperimentLoadError(
+            "The model selection record must declare frozen_external_validated status"
+        )
+    experiment_value = payload.get("experiment_dir")
+    checkpoint_sha256 = payload.get("checkpoint_sha256")
+    if not isinstance(experiment_value, str) or not isinstance(checkpoint_sha256, str):
+        raise ExperimentLoadError(
+            "The model selection record must include experiment_dir and checkpoint_sha256 strings"
+        )
+    if re.fullmatch(r"[0-9a-f]{64}", checkpoint_sha256) is None:
+        raise ExperimentLoadError("The model selection record has an invalid checkpoint_sha256")
+    experiment_dir = Path(experiment_value)
+    if not experiment_dir.is_absolute():
+        experiment_dir = record_path.parent / experiment_dir
+    return ModelSelectionRecord(
+        record_path=record_path,
+        experiment_dir=experiment_dir.resolve(),
+        checkpoint_sha256=checkpoint_sha256,
+    )
 
 
 def preprocessing_from_run(run: dict[str, Any]) -> dict[str, object]:
@@ -83,6 +137,25 @@ class ModelBundle:
     metrics: dict[str, object]
     preprocessing: dict[str, object]
     transform: RGBTransform | FFTTransform
+
+    @classmethod
+    def load_selected(
+        cls, selection_record: str | Path, device_name: str = "auto"
+    ) -> ModelBundle:
+        """Load only a reviewed, H1-N checkpoint whose content matches its selection record."""
+        selection = load_selection_record(selection_record)
+        bundle = cls.load(selection.experiment_dir, device_name=device_name)
+        if bundle.checkpoint_sha256 != selection.checkpoint_sha256:
+            raise ExperimentLoadError(
+                "The selected checkpoint hash does not match the model selection record"
+            )
+        if bundle.preprocessing["protocol"] != CONTROLLED_PREPROCESSING_PROTOCOL:
+            raise ExperimentLoadError(
+                "A selected local model must use the amended H1-N controlled preprocessing"
+            )
+        if not bundle.metrics:
+            raise ExperimentLoadError("A selected local model must include internal test metrics")
+        return bundle
 
     @classmethod
     def load(cls, experiment_dir: str | Path, device_name: str = "auto") -> ModelBundle:
