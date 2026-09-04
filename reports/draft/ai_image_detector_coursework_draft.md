@@ -41,8 +41,9 @@ from a controlled source of 512-pixel-or-larger images. A complete metadata audi
 CommunityForensics-Small as a broad primary source: its common 512 x 512 PNG/RGB gate is almost
 entirely synthetic. B-Free is a conditional controlled 512-pixel candidate when its official
 archives can be reached and verified [13]. DANI remains a descriptive fallback [14]. Its
-path-derived candidate keys now match a pinned D-Judge mapping completely, but official COCO
-identity, the licence chain, image-byte quality and the final grouped split are not yet verified.
+path-derived candidate keys match both a pinned D-Judge mapping and the checksum-locked official
+COCO 2017 captions. A conservative local non-commercial rule retains only Flickr licence IDs 2 and
+4, while image-byte quality and the final grouped split are not yet verified.
 There is no final materialised corpus, leakage-audited split, trained HighRes-v1 model, robustness
 result, or external result. The report consequently offers a reproducible protocol and limited
 historical exploratory observations, not a claim of general AI-image detection. A local prototype is
@@ -273,9 +274,13 @@ The offline mapping audit joined all 540,258 catalogue rows exactly to
 `d21590e888794de4faa768f2a36c3f00c8088fb23330bf0b1e1addd8437999e7`). It observed 5,000 candidate
 parents and 25,014 candidate parent-caption pairs; every parent and every pair occurs under both
 labels. This is evidence that the reconstructed keys agree with the pinned D-Judge mapping, not an
-official COCO identity claim. Internal selection, split assignment and training remain blocked
-until an official COCO annotation join, the combined licence/provenance chain, image-byte quality
-and a deterministic parent-grouped split have been verified.
+official COCO identity claim. The official COCO audit then matched all 5,000 filenames and all
+25,014 caption ID/parent/text tuples exactly; every parent is from COCO `val2017`. The
+licence/provenance decision allows only local non-commercial coursework use, attribution, and no
+raw redistribution. To avoid unresolved NoDerivs, ShareAlike, or ambiguous records, the future
+metadata selection accepts only official Flickr licence IDs 2 and 4. Internal split assignment and
+training remain blocked until the selection is frozen and its image bytes pass the declared
+data-quality checks.
 
 The common future raster will be highres_square_crop_384_v1: a source square crop followed by one
 384 x 384 LANCZOS resize. A source below the frozen minimum is rejected rather than upsampled.

@@ -171,7 +171,9 @@ requesting `image.bytes`. The offline lineage audit joins every one of 540,258 c
 exact pair in the D-Judge mapping pinned at revision
 6b877a12df94ddc4f68abb54db7912dc966d17e4: 5,000 parents and 25,014 caption pairs are covered, and
 every verified key crosses both labels. This proves the path-derived keys against that mapping; it
-does not yet prove official COCO identity or make DANI trainable.
+does not by itself make DANI trainable. A second offline audit verified every parent filename and
+every caption ID/parent/text tuple against the checksum-locked official COCO 2017 annotations; all
+5,000 parents are from `val2017`.
 
     .venv/bin/python scripts/scan_dani_metadata.py --output-dir data/processed/dani_metadata_v1
 
@@ -187,8 +189,11 @@ does not yet prove official COCO identity or make DANI trainable.
 
 Both DANI audits are offline and fail closed on an incomplete scan, changed source evidence, raw
 image/caption fields, or an unverified mapping pair. Candidate selection, image download, split
-assignment and training remain blocked pending an official COCO annotation join, licence-chain
-review, byte/pixel data-quality audit and deterministic parent-grouped split.
+assignment and training remain blocked pending the later gates. The conservative
+[licence/provenance decision](docs/DANI_LICENSE_PROVENANCE.md) allows local non-commercial coursework
+use only, selects official COCO/Flickr licence IDs 2 and 4, and prohibits raw-image redistribution.
+Image bytes still require a frozen parent-grouped selection and complete data-quality audit before
+training.
 
 `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter training,
 model selection, threshold selection or augmentation selection. The preparation script does not
