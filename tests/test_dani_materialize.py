@@ -206,3 +206,24 @@ def test_refuses_core_byte_cap_drift(tmp_path: Path) -> None:
             downloader=_downloader(source_shard),
             byte_cap=BYTE_CAP - 1,
         )
+
+
+def test_resume_peak_does_not_count_existing_range_parts_twice(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    materialized = tmp_path / "materialized"
+    target = staging / "data" / "sample.parquet"
+    parts = target.with_name(target.name + ".range-parts")
+    parts.mkdir(parents=True)
+    materialized.mkdir()
+    (parts / "000.part").write_bytes(b"x" * 700)
+    (staging / "unrelated.lock").write_bytes(b"l" * 11)
+    (materialized / "partial.csv").write_bytes(b"m" * 13)
+
+    peak = dani_materialize._projected_range_download_peak(
+        staging,
+        materialized,
+        target,
+        expected_size=1_000,
+    )
+
+    assert peak == 11 + 13 + 2_000

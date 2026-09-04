@@ -68,6 +68,23 @@ def _directory_bytes(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
+def _projected_range_download_peak(
+    staging_dir: Path,
+    materialized_dir: Path,
+    local_path: Path,
+    expected_size: int,
+) -> int:
+    """Bound peak bytes without counting already downloaded range parts twice.
+
+    A complete range download temporarily holds both all parts and the assembled shard. Existing
+    resumable parts are already included in ``staging_dir`` and replace, rather than add to, the
+    eventual full set of parts.
+    """
+    parts_dir = local_path.with_name(local_path.name + ".range-parts")
+    unrelated_staging = _directory_bytes(staging_dir) - _directory_bytes(parts_dir)
+    return unrelated_staging + _directory_bytes(materialized_dir) + 2 * expected_size
+
+
 def _load_core_plan(
     core_dir: Path,
 ) -> tuple[list[dict[str, str]], list[dict[str, str]], dict[str, object]]:
@@ -348,8 +365,11 @@ def materialize_core(
             if not local_path.is_file():
                 if progress is not None:
                     progress(f"download {shard_path}")
-                projected_download_peak = (
-                    _directory_bytes(staging) + _directory_bytes(destination) + 2 * expected_size
+                projected_download_peak = _projected_range_download_peak(
+                    staging,
+                    destination,
+                    local_path,
+                    expected_size,
                 )
                 if projected_download_peak > byte_cap:
                     raise ValueError("Parallel range staging would exceed the hard byte cap")
