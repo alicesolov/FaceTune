@@ -15,7 +15,12 @@ from ai_image_detector.features import (
 )
 from ai_image_detector.manifest import load_manifest
 from ai_image_detector.models import build_resnet50, trainable_parameter_count
-from ai_image_detector.reproducibility import get_device, save_json, seed_everything
+from ai_image_detector.reproducibility import (
+    environment_snapshot,
+    get_device,
+    save_json,
+    seed_everything,
+)
 from ai_image_detector.training import (
     LEGACY_LABEL_WEIGHTED_SAMPLER,
     PAIRED_GROUP_BALANCED_SAMPLER,
@@ -140,6 +145,7 @@ def main() -> None:
     save_json(
         {
             "device": str(device),
+            "environment_at_launch": environment_snapshot(),
             "trainable_parameters": trainable_parameter_count(model),
             "preprocessing": preprocessing,
             "train_sampler": train_sampler_metadata(train_loader),
