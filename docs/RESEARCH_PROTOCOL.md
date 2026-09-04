@@ -49,9 +49,11 @@ varied aspect ratios. Direct rectangular-to-square resizing would expose a class
 resampling trace, especially to FFT features. The earlier radial result is consequently D0 only.
 
 H1-N decodes RGB, crops a source square, applies one common 128 x 128 LANCZOS rasterisation, and
-calculates FFT only after that shared raster. It never letterboxes. The grouped internal test was
-viewed for D0, so amended internal results are exploratory stress-test evidence rather than a
-confirmatory test. The external test is required before any transfer claim.
+calculates FFT only after that shared raster. It never letterboxes. Neural training uses a
+seeded-random square crop, whereas the fixed-feature radial baseline uses a deterministic centre
+crop for every split; the two roles must not be conflated. The grouped internal test was viewed for
+D0, so amended internal results are exploratory stress-test evidence rather than a confirmatory
+test. The external test is required before any transfer claim.
 - Repeat final selected experiments for three seeds. Report mean, standard deviation and 95% bootstrap
   intervals; do not choose the best seed.
 
@@ -78,9 +80,10 @@ H1-N selection.
 Primary metrics are ROC-AUC, balanced accuracy and macro-F1. PR-AUC is secondary because Defactify
 has a 5:1 AI/real prevalence. Secondary metrics are per-class precision/recall, FPR at TPR 95%,
 paired group-ranking accuracy, Brier score, expected calibration error, confusion matrix and
-coverage-risk for abstention. Confidence intervals and RGB-minus-FFT comparisons resample whole
-`leakage_group` clusters. `accuracy` is secondary. A raw softmax score must be called a *model
-score*, not a probability, until calibration is checked.
+coverage-risk for abstention. FPR at TPR 95% is recomputed from the scored test ROC curve and is
+descriptive; it is not the validation-selected deployment threshold. Confidence intervals and
+RGB-minus-FFT comparisons resample whole `leakage_group` clusters. `accuracy` is secondary. A raw
+softmax score must be called a *model score*, not a probability, until calibration is checked.
 
 Allowed: “On the specified held-out benchmark, model X achieved metric Y.”
 Not allowed: “The model authenticates images” or “a 93% score proves that an image is AI-generated.”

@@ -38,8 +38,10 @@ representation choice in one controlled corpus.
 For every image model and every control based on image pixels:
 
 1. Decode the image to RGB and ignore EXIF and the original file container.
-2. Crop to a square without padding.  The training crop is random under the experiment seed;
-   validation, test, robustness, and external evaluation use a deterministic centre crop.
+2. Crop to a square without padding. H1-N **neural** training uses a random crop under the
+   experiment seed; neural validation, test, robustness, and external evaluation use a
+   deterministic centre crop. The radial logistic baseline extracts one fixed feature vector per
+   image and therefore uses the deterministic centre crop on train, validation, and test.
 3. Resize the cropped square with one documented interpolation method to 128 x 128 pixels.
    The corpus minimum short side is 128 pixels, so this step does not require upsampling.
 4. Feed that same standardised raster to RGB or compute the FFT magnitude from it.  FFT never sees
@@ -72,13 +74,17 @@ winner.  Checkpoints and binary thresholds are selected only from validation pre
 
 The original Defactify grouped test set was inspected during D0.  Therefore, results of H1-N on
 that same test split are labelled **exploratory internal stress-test results**, even though no
-amended neural hyperparameter is selected using them.  The confirmatory evaluation is the locked
+amended neural hyperparameter is selected using them. The confirmatory evaluation is the locked
 external corpus (Synthbuster synthetic images paired with a documented real-photo source), run
 only after preprocessing, model family, seed aggregation, checkpoint rule and threshold rule are
-frozen.
+frozen. Its manifest must record the relation of each external generator to Defactify
+(same-named, same-family/different-version, same-family/version-unspecified, or unseen-family);
+the pooled score must not be labelled an unseen-generator result.
 
 For each model and each seed, report ROC-AUC, balanced accuracy, macro-F1, per-class recall, and
-FPR at TPR 95%.  Report each synthetic generator separately, followed by macro-average and
+FPR at TPR 95%. This last value is a descriptive ROC-curve operating point recomputed from the
+scored test rows; it is not the validation-selected deployment threshold. Report each synthetic
+generator separately, followed by macro-average and
 worst-generator values.  Also report paired group-ranking accuracy: the fraction of same-group
 real/fake pairs for which the fake receives the higher score.  Confidence intervals and RGB-minus-
 FFT comparisons must resample whole `leakage_group` clusters, not individual correlated images.
@@ -88,7 +94,9 @@ model score remains a score, not a probability, until separately calibrated on v
 
 ## Interpretation rules
 
-Any result may falsify H1-N.  A high internal score alone cannot validate a public claim or
-authenticate an arbitrary image.  A web interface may serve only a selected, frozen model after
-the external evaluation and must show its model card, threshold, dataset limitations and the fact
-that its output is an experimental score.
+Any result may falsify H1-N. A high internal score alone cannot validate a public claim or
+authenticate an arbitrary image. A web interface may serve only a selected, frozen H1-N model
+after external evaluation and must show its model card, threshold, dataset limitations and the fact
+that its output is an experimental score. The local app additionally requires a hash-pinned,
+human-reviewed selection record; the record is an auditable launch gate, not independent proof
+that external validation was actually performed.
