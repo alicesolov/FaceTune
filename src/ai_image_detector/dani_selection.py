@@ -28,7 +28,7 @@ LINEAGE_AUDIT_SCHEMA: Final = "dani_lineage_mapping_audit_v1"
 COCO_IDENTITY_SCHEMA: Final = "dani_coco_identity_audit_v1"
 DEFAULT_SELECTION_SEED: Final = 20_260_830
 DECLARED_SOURCE_SIZE: Final = 1024
-MATERIALISATION_BYTE_BUDGET: Final = 25_000_000_000
+MATERIALISATION_BYTE_BUDGET: Final = 40_000_000_000
 ALLOWED_COCO_LICENSE_IDS: Final = (2, 4)
 SPLIT_RATIOS: Final = {"train": 0.70, "val": 0.15, "test": 0.15}
 SPLIT_ORDER: Final = {"train": 0, "val": 1, "test": 2}
@@ -526,7 +526,7 @@ def build_selection(
         raise AssertionError("DANI selection does not have exactly one row per required cell")
     theoretical_rgb_bytes = len(selected_rows) * DECLARED_SOURCE_SIZE * DECLARED_SOURCE_SIZE * 3
     if theoretical_rgb_bytes > MATERIALISATION_BYTE_BUDGET:
-        raise ValueError("Selected 1024 RGB upper-bound exceeds the 25 GB materialisation budget")
+        raise ValueError("Selected 1024 RGB upper-bound exceeds the 40 GB materialisation budget")
 
     hashes_after = {
         "lineage_catalog_sha256": dani.sha256_file(catalog_path),
