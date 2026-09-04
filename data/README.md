@@ -28,16 +28,21 @@ metadata-only and writes ignored local records under `data/processed/`; no image
 or Arrow cache are committed. See [the HighRes-v1 protocol](../docs/HIGHRES_V1_PROTOCOL.md) for the
 academic roles and freeze order.
 
+The scanner's process-local cache defaults to ignored `artifacts/cache/huggingface/datasets`; it is
+only for Hub/datasets locks and metadata streaming. The source catalog itself is still not a
+trainable manifest, and a `--limit-shards` scout is explicitly ineligible for selection or
+training.
+
 Before materialisation, each source-catalog record must include at least:
 
 ```text
-source_locator,source_repository,source_revision,source_shard,source_row,
-source_image_name,label,width,height,format,mode,nsfw_flag,model_name,
-architecture,subset,real_source,prompt_sha256,prompt_group_id
+locator,repository_id,revision,shard_path,row_index,
+image_name,label,source_width,source_height,format,mode,nsfw_flag,model_name,
+architecture,subset,real_source,prompt_hash,content_group_id
 ```
 
-`source_locator` has the revision-pinned form
-`repository@revision:parquet-shard:row-index`. `prompt_sha256` is an audit key, never an image
+`locator` has the revision-pinned form
+`repository@revision:parquet-shard:row-index`. `prompt_hash` is an audit key, never an image
 model input. Empty prompts receive a row-specific `prompt_group_id` so they do not become one false
 leakage group. The first corpus gate accepts only 512 x 512 RGB PNG rows with an explicit non-NSFW
 flag; it rejects rather than upscales a smaller source for the 384 x 384 training raster.

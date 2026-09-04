@@ -110,6 +110,16 @@ an ignored local source lock/source catalog. It deliberately excludes binary ima
 does not make a partial scout eligible for training. See [HighRes-v1](docs/HIGHRES_V1_PROTOCOL.md)
 and [data/README.md](data/README.md) before materialising any image.
 
+```bash
+# Metadata only: full source catalog, source lock, and provenance. It does not download image bytes.
+.venv/bin/python scripts/scan_community_forensics_metadata.py \
+  --output-dir data/processed/community_forensics_small_metadata_v1
+```
+
+The scanner stores only temporary Hugging Face locks/cache under ignored
+`artifacts/cache/huggingface` by default. `--limit-shards N` is only a transport smoke test: its
+catalogue is automatically marked partial and cannot be used for selection or training.
+
 `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter training,
 model selection, threshold selection or augmentation selection. The preparation script does not
 download it automatically so the benchmark stays locked; RAISE states that its images are for
