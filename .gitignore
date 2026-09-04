@@ -1,15 +1,15 @@
+.venv/
+.jupyter/
+.uv-cache/
 __pycache__/
-*.pyc
-*.egg-info/
-
-# Model checkpoints (large binaries — track separately)
-model/*.pth
-
-# Claude Code memory (local only)
-.claude/
-
-# HuggingFace cache
-.cache/
-
-# OS
+*.py[cod]
 .DS_Store
+.ipynb_checkpoints/
+
+# Reproducible inputs may be re-created from manifests; never commit raw images.
+data/raw/
+data/processed/
+data/external/
+artifacts/
+reports/generated/
+.pytest_cache/
