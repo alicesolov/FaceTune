@@ -25,6 +25,7 @@ from .reproducibility import environment_snapshot, save_json, seed_everything
 
 LEGACY_LABEL_WEIGHTED_SAMPLER = "legacy_label_weighted_v1"
 PAIRED_GROUP_BALANCED_SAMPLER = "paired_group_balanced_v1"
+PAIRED_COMPONENT_BINARY_SAMPLER = "paired_component_binary_v1"
 
 
 def resolve_group_column(frame: pd.DataFrame, requested: str = "leakage_group") -> str:
@@ -136,13 +137,102 @@ class PairedGroupSampler(Sampler[int]):
         # frequency or the largest groups to decide the pairing distribution.
         choices = [
             fake_generator
-            for _ in range((len(groups) + len(self.fake_generators) - 1) // len(self.fake_generators))
+            for _ in range(
+                (len(groups) + len(self.fake_generators) - 1) // len(self.fake_generators)
+            )
             for fake_generator in self.fake_generators
         ][: len(groups)]
         generator.shuffle(choices)
         for (_, real_indices, fake_indices), fake_generator in zip(groups, choices, strict=True):
             yield generator.choice(real_indices)
             yield generator.choice(fake_indices[fake_generator])
+
+
+class PairedComponentBinarySampler(Sampler[int]):
+    """Sample one balanced real/fake pair from each frozen user-selected pair unit.
+
+    Unlike :class:`PairedGroupSampler`, this sampler does not require every fake generator to be
+    represented within every unit. It is intended for a corpus whose manifest has already frozen
+    exactly one (or a small set of) fake candidate(s) alongside its real candidate in each
+    selected group. Consecutive sampler indices are always ``[real, fake]`` pairs.
+    """
+
+    def __init__(
+        self,
+        frame: pd.DataFrame,
+        *,
+        seed: int,
+        group_column: str = "leakage_group",
+    ) -> None:
+        group_column = resolve_group_column(frame, group_column)
+        required = {"label", group_column}
+        missing = required.difference(frame.columns)
+        if missing:
+            raise ValueError(f"Paired component sampler requires columns: {sorted(missing)}")
+        if frame[group_column].isna().any():
+            raise ValueError(f"Paired component sampler requires non-null {group_column!r} values")
+
+        self.frame = frame.reset_index(drop=True)
+        self.seed = seed
+        self.group_column = group_column
+        self.epoch = 0
+
+        real_indices: dict[str, list[int]] = defaultdict(list)
+        fake_indices: dict[str, list[int]] = defaultdict(list)
+        for index, row in self.frame.iterrows():
+            group = str(row[group_column])
+            label = row["label"]
+            if label == 0:
+                real_indices[group].append(index)
+            elif label == 1:
+                fake_indices[group].append(index)
+            else:
+                raise ValueError("Paired component sampler accepts only binary labels 0 and 1")
+
+        self._groups: list[tuple[str, tuple[int, ...], tuple[int, ...]]] = []
+        for group in sorted(set(real_indices) | set(fake_indices)):
+            if not real_indices[group] or not fake_indices[group]:
+                raise ValueError(
+                    f"Component {group!r} cannot form a real/fake pair; "
+                    f"missing real={not bool(real_indices[group])}, "
+                    f"missing fake={not bool(fake_indices[group])}"
+                )
+            self._groups.append((group, tuple(real_indices[group]), tuple(fake_indices[group])))
+        if not self._groups:
+            raise ValueError("Paired component sampler received no groups")
+
+        self.fake_generators = (
+            tuple(
+                sorted(self.frame.loc[self.frame["label"] == 1, "generator"].astype(str).unique())
+            )
+            if "generator" in self.frame.columns
+            else ()
+        )
+
+    def __len__(self) -> int:
+        return 2 * len(self._groups)
+
+    def set_epoch(self, epoch: int) -> None:
+        self.epoch = epoch
+
+    def metadata(self) -> dict[str, object]:
+        return {
+            "choice": PAIRED_COMPONENT_BINARY_SAMPLER,
+            "group_column": self.group_column,
+            "groups_per_epoch": len(self._groups),
+            "paired_samples_per_epoch": len(self),
+            "fake_generators": list(self.fake_generators),
+            "pairing": "one_real_and_one_fake_uniform_within_component",
+        }
+
+    def __iter__(self) -> Iterator[int]:
+        # The epoch multiplier matches the H1-N paired sampler while preserving reproducibility.
+        generator = random.Random(self.seed + self.epoch * 1_000_003)
+        groups = self._groups.copy()
+        generator.shuffle(groups)
+        for _, real_indices, fake_indices in groups:
+            yield generator.choice(real_indices)
+            yield generator.choice(fake_indices)
 
 
 @dataclass(frozen=True)
@@ -176,12 +266,19 @@ def make_loader(
 ) -> DataLoader:
     dataset = ManifestImageDataset(frame, transform, seed=seed)  # type: ignore[arg-type]
     if train:
-        if sampler_protocol == PAIRED_GROUP_BALANCED_SAMPLER:
+        if sampler_protocol in {
+            PAIRED_GROUP_BALANCED_SAMPLER,
+            PAIRED_COMPONENT_BINARY_SAMPLER,
+        }:
             if batch_size % 2:
-                raise ValueError("Paired group sampling requires an even batch_size to keep pairs intact")
+                raise ValueError("Paired sampling requires an even batch_size to keep pairs intact")
             if seed is None:
-                raise ValueError("Paired group sampling requires an explicit experiment seed")
-            sampler = PairedGroupSampler(frame, seed=seed, group_column=group_column)
+                raise ValueError("Paired sampling requires an explicit experiment seed")
+            sampler = (
+                PairedGroupSampler(frame, seed=seed, group_column=group_column)
+                if sampler_protocol == PAIRED_GROUP_BALANCED_SAMPLER
+                else PairedComponentBinarySampler(frame, seed=seed, group_column=group_column)
+            )
             return DataLoader(dataset, batch_size=batch_size, sampler=sampler, num_workers=workers)
         if sampler_protocol != LEGACY_LABEL_WEIGHTED_SAMPLER:
             raise ValueError(f"Unsupported train sampler {sampler_protocol!r}")
@@ -195,7 +292,7 @@ def make_loader(
 def train_sampler_metadata(loader: DataLoader) -> dict[str, object]:
     """Expose the selected train sampler in the run artifact without serialising implementation."""
     sampler = loader.sampler
-    if isinstance(sampler, PairedGroupSampler):
+    if isinstance(sampler, (PairedGroupSampler, PairedComponentBinarySampler)):
         return sampler.metadata()
     if isinstance(sampler, WeightedRandomSampler):
         return {"choice": LEGACY_LABEL_WEIGHTED_SAMPLER, "replacement": True}

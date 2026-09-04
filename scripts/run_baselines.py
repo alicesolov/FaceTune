@@ -17,8 +17,10 @@ from ai_image_detector.baselines import (
     radial_predict,
     radial_preprocessing_metadata,
 )
+from ai_image_detector.canonical_integrity import validate_defactify_exploratory_corpus
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
 )
 from ai_image_detector.manifest import load_manifest
@@ -120,9 +122,10 @@ def build_baseline_run_metadata(
     environment_at_launch: dict[str, Any],
     requested_options: dict[str, object],
     resolved_options: dict[str, object],
+    canonical_corpus_integrity: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Build the existing run.json payload plus immutable launch provenance."""
-    return {
+    metadata: dict[str, Any] = {
         # Keep the established fields unchanged for existing analysis tooling.
         "name": name,
         "seed": seed,
@@ -137,6 +140,9 @@ def build_baseline_run_metadata(
             "resolved": resolved_options,
         },
     }
+    if canonical_corpus_integrity is not None:
+        metadata["canonical_corpus_integrity"] = canonical_corpus_integrity
+    return metadata
 
 
 def run_one(
@@ -151,11 +157,10 @@ def run_one(
     environment_at_launch: dict[str, Any],
     requested_options: dict[str, object],
     resolved_options: dict[str, object],
+    canonical_corpus_integrity: dict[str, object] | None = None,
 ) -> None:
     if name == "radial_fft_logistic":
-        model = fit_radial_logistic(
-            train, seed=seed, preprocessing_protocol=preprocessing_protocol
-        )
+        model = fit_radial_logistic(train, seed=seed, preprocessing_protocol=preprocessing_protocol)
         predict = partial(radial_predict, preprocessing_protocol=preprocessing_protocol)
         run_preprocessing: dict[str, object] | None = radial_preprocessing_metadata(
             preprocessing_protocol
@@ -192,6 +197,7 @@ def run_one(
             environment_at_launch=environment_at_launch,
             requested_options=requested_options,
             resolved_options=resolved_options,
+            canonical_corpus_integrity=canonical_corpus_integrity,
         ),
         output / "run.json",
     )
@@ -209,9 +215,16 @@ def main() -> None:
     parser.add_argument("--only", choices=("radial_fft_logistic", "file_metadata_control"))
     parser.add_argument(
         "--preprocessing-protocol",
-        choices=(CONTROLLED_PREPROCESSING_PROTOCOL, LEGACY_PREPROCESSING_PROTOCOL),
+        choices=(
+            CONTROLLED_PREPROCESSING_PROTOCOL,
+            HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            LEGACY_PREPROCESSING_PROTOCOL,
+        ),
         default=CONTROLLED_PREPROCESSING_PROTOCOL,
-        help="Use legacy mode only to reproduce D0; H1-N controls default to source-normalised rasterisation.",
+        help=(
+            "Use legacy mode only to reproduce D0; H1-N controls default to source-normalised "
+            "rasterisation and Defactify-HR uses its frozen canonical 384px corpus."
+        ),
     )
     args = parser.parse_args()
     baselines = selected_baselines(args.only)
@@ -226,6 +239,11 @@ def main() -> None:
     frame = load_manifest(manifest_path, check_paths=True)
     if sha256_file(manifest_path) != manifest_sha256:
         raise SystemExit("Manifest changed while the baseline launch was starting; rerun it.")
+    canonical_corpus_integrity = (
+        validate_defactify_exploratory_corpus(manifest_path, frame)
+        if args.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
+        else None
+    )
     manifest = manifest_launch_metadata(manifest_path, manifest_sha256, frame)
     resolved_options = resolved_launch_options(requested_options, baselines)
     train, val, test = (frame[frame.split == split].copy() for split in ("train", "val", "test"))
@@ -242,6 +260,7 @@ def main() -> None:
             environment_at_launch,
             requested_options,
             resolved_options,
+            canonical_corpus_integrity,
         )
 
 

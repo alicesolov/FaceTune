@@ -10,6 +10,12 @@ The project intentionally keeps two preprocessing protocols:
     The controlled H1-N protocol.  It decodes to RGB, crops a square from the source raster, and
     makes one common 128 x 128 raster before either RGB features or an FFT are calculated.  This
     removes source aspect-ratio and interpolation policy as an accidental label cue.
+
+``defactify_hr_native384_canonical_v1``
+    The exploratory Defactify-HR corpus is already materialised as a common RGB PNG native crop.
+    This protocol accepts only that exact 384 x 384 raster and never revisits the original source
+    geometry at training time. It normalises output-raster geometry, not source-scale or
+    acquisition-pipeline differences.
 """
 
 from __future__ import annotations
@@ -30,14 +36,23 @@ LEGACY_PREPROCESSING_PROTOCOL: Final = "legacy_resize_v1"
 CONTROLLED_PREPROCESSING_PROTOCOL: Final = "h1n_square_crop_128_v1"
 CONTROLLED_PREPROCESSING_VERSION: Final = "1.0"
 CONTROLLED_IMAGE_SIZE: Final = 128
+HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL: Final = "defactify_hr_native384_canonical_v1"
+HIGHRES_CANONICAL_PREPROCESSING_VERSION: Final = "1.0"
+HIGHRES_CANONICAL_IMAGE_SIZE: Final = 384
 LEGACY_IMAGE_SIZE: Final = 256
 CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY: Final = 0.5
 
 
 def _validate_protocol(protocol: str) -> str:
-    supported = {LEGACY_PREPROCESSING_PROTOCOL, CONTROLLED_PREPROCESSING_PROTOCOL}
+    supported = {
+        LEGACY_PREPROCESSING_PROTOCOL,
+        CONTROLLED_PREPROCESSING_PROTOCOL,
+        HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+    }
     if protocol not in supported:
-        raise ValueError(f"Unsupported preprocessing protocol {protocol!r}; expected one of {sorted(supported)}")
+        raise ValueError(
+            f"Unsupported preprocessing protocol {protocol!r}; expected one of {sorted(supported)}"
+        )
     return protocol
 
 
@@ -64,6 +79,28 @@ def preprocessing_metadata(protocol: str, image_size: int | None = None) -> dict
                     "probability": CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY,
                     "applies_to": "train_only",
                     "order": "after_common_raster",
+                }
+            },
+        }
+    if protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+        if image_size is not None and image_size != HIGHRES_CANONICAL_IMAGE_SIZE:
+            raise ValueError(
+                "The Defactify-HR canonical protocol fixes the common raster at "
+                f"{HIGHRES_CANONICAL_IMAGE_SIZE} x {HIGHRES_CANONICAL_IMAGE_SIZE}."
+            )
+        return {
+            "protocol": protocol,
+            "version": HIGHRES_CANONICAL_PREPROCESSING_VERSION,
+            "image_size": HIGHRES_CANONICAL_IMAGE_SIZE,
+            "input_contract": "precanonicalized_native_crop_rgb_png",
+            "crop_policy": "no_source_crop_or_resample_at_training_time",
+            "resize": "none",
+            "fft_input": "canonical_raster_only",
+            "neural_train_augmentation": {
+                "horizontal_flip": {
+                    "probability": CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY,
+                    "applies_to": "train_only",
+                    "order": "after_canonical_raster_validation",
                 }
             },
         }
@@ -161,7 +198,9 @@ class RGBTransform:
         # The dataset supplies a stable per-sample RNG only for this mode.  Keeping legacy random
         # behaviour untouched permits exact reruns of the originally declared baseline.
         self.uses_contextual_rng = (
-            self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL and self.train
+            self.preprocessing_protocol
+            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
+            and self.train
         )
         transforms: list[object] = []
         if self.preprocessing_protocol == LEGACY_PREPROCESSING_PROTOCOL:
@@ -181,6 +220,14 @@ class RGBTransform:
         """Return the raster immediately before representation-specific encoding."""
         if self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
             image = source_normalized_rasterize(image, size=self.size, train=self.train, rng=rng)
+            image = _apply_train_augmentation(
+                image,
+                train=self.train,
+                robust_augmentation=self.robust_augmentation,
+                rng=rng,
+            )
+        elif self.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+            image = require_canonical_highres_raster(image, size=self.size)
             image = _apply_train_augmentation(
                 image,
                 train=self.train,
@@ -217,7 +264,9 @@ class FFTTransform:
         self.train = train
         self.robust_augmentation = robust_augmentation
         self.uses_contextual_rng = (
-            self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL and self.train
+            self.preprocessing_protocol
+            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
+            and self.train
         )
         self.normalize = v2.Normalize(IMAGENET_MEAN, IMAGENET_STD)
 
@@ -225,6 +274,14 @@ class FFTTransform:
         """Return the common spatial raster before calculating the FFT magnitude."""
         if self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
             image = source_normalized_rasterize(image, size=self.size, train=self.train, rng=rng)
+            image = _apply_train_augmentation(
+                image,
+                train=self.train,
+                robust_augmentation=self.robust_augmentation,
+                rng=rng,
+            )
+        elif self.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+            image = require_canonical_highres_raster(image, size=self.size)
             image = _apply_train_augmentation(
                 image,
                 train=self.train,
@@ -261,6 +318,27 @@ def _apply_legacy_train_augmentation(
         if roll < 0.5:
             return apply_degradation(image, "blur")
     return image
+
+
+def require_canonical_highres_raster(image: Image.Image, *, size: int) -> Image.Image:
+    """Accept only a decoded canonical RGB raster; never resample a substituted source image."""
+    if image.mode != "RGB":
+        raise ValueError(
+            "Defactify-HR canonical preprocessing requires an already decoded RGB raster, "
+            f"got mode {image.mode!r}"
+        )
+    decoded = ImageOps.exif_transpose(image)
+    if decoded.mode != "RGB":
+        raise ValueError(
+            "Defactify-HR canonical preprocessing requires an RGB raster after orientation "
+            f"normalisation, got mode {decoded.mode!r}"
+        )
+    if decoded.size != (size, size):
+        raise ValueError(
+            "Defactify-HR canonical preprocessing requires an already materialised "
+            f"{size} x {size} RGB raster, got {decoded.size[0]} x {decoded.size[1]}"
+        )
+    return decoded
 
 
 def _apply_train_augmentation(
@@ -305,7 +383,8 @@ class DegradedTransform:
         """
         base = self.base_transform
         if (
-            getattr(base, "preprocessing_protocol", None) == CONTROLLED_PREPROCESSING_PROTOCOL
+            getattr(base, "preprocessing_protocol", None)
+            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
             and hasattr(base, "rasterize")
             and hasattr(base, "encode_raster")
         ):

@@ -26,6 +26,60 @@ def test_experiment_output_directory_refuses_overwrite(tmp_path: Path) -> None:
         run_experiment.require_fresh_output_dir(output_dir)
 
 
+@pytest.mark.parametrize(
+    ("protocol", "expected_sampler"),
+    (
+        (
+            run_experiment.CONTROLLED_PREPROCESSING_PROTOCOL,
+            run_experiment.PAIRED_GROUP_BALANCED_SAMPLER,
+        ),
+        (
+            run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            run_experiment.PAIRED_COMPONENT_BINARY_SAMPLER,
+        ),
+        (
+            run_experiment.LEGACY_PREPROCESSING_PROTOCOL,
+            run_experiment.LEGACY_LABEL_WEIGHTED_SAMPLER,
+        ),
+    ),
+)
+def test_protocol_default_sampler_is_explicit(protocol: str, expected_sampler: str) -> None:
+    assert run_experiment.resolve_train_sampler(protocol, None) == expected_sampler
+
+
+def test_requested_sampler_overrides_protocol_default() -> None:
+    assert (
+        run_experiment.resolve_train_sampler(
+            run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            run_experiment.LEGACY_LABEL_WEIGHTED_SAMPLER,
+        )
+        == run_experiment.LEGACY_LABEL_WEIGHTED_SAMPLER
+    )
+
+
+def test_paired_group_default_preserves_highres_caption_pairs() -> None:
+    frame = _isolated_manifest_frame()
+
+    assert (
+        run_experiment.resolve_paired_group_column(
+            frame, run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL, None
+        )
+        == "group_id"
+    )
+    assert (
+        run_experiment.resolve_paired_group_column(
+            frame, run_experiment.CONTROLLED_PREPROCESSING_PROTOCOL, None
+        )
+        == "leakage_group"
+    )
+    assert (
+        run_experiment.resolve_paired_group_column(
+            frame, run_experiment.HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL, "leakage_group"
+        )
+        == "leakage_group"
+    )
+
+
 def _isolated_manifest_frame(include_caption: bool = True) -> pd.DataFrame:
     frame = pd.DataFrame(
         {
@@ -88,6 +142,18 @@ def test_split_isolation_gate_fails_closed_when_required_key_is_blank() -> None:
         run_experiment.validate_split_isolation(frame)
 
     assert "phash" in str(error.value)
+
+
+def test_highres_split_isolation_requires_source_level_hashes() -> None:
+    frame = _isolated_manifest_frame()
+
+    with pytest.raises(ValueError, match="source_sha256"):
+        run_experiment.validate_split_isolation(frame, require_highres_source_keys=True)
+
+    frame["source_sha256"] = ["source-byte-train", "source-byte-val", "source-byte-test"]
+    frame["source_pixel_sha256"] = ["source-pixel-train", "source-pixel-val", "source-pixel-test"]
+    frame["source_phash"] = ["source-phash-train", "source-phash-val", "source-phash-test"]
+    run_experiment.validate_split_isolation(frame, require_highres_source_keys=True)
 
 
 def test_main_blocks_leakage_before_creating_model_artifacts(

@@ -12,7 +12,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from .features import CONTROLLED_PREPROCESSING_PROTOCOL
+from .features import LEGACY_PREPROCESSING_PROTOCOL
 
 
 class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, str]]]):
@@ -42,7 +42,7 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
         """Require the portable manifest identity used by controlled train-time RNGs."""
         if "source_id" not in self.frame.columns:
             raise ValueError(
-                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "Controlled stochastic training requires a non-empty 'source_id' "
                 "column as its stable manifest identity."
             )
         source_ids = self.frame["source_id"]
@@ -50,7 +50,7 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
         invalid_count = int(invalid.sum())
         if invalid_count:
             raise ValueError(
-                "Controlled H1-N stochastic training requires non-empty 'source_id' values "
+                "Controlled stochastic training requires non-empty 'source_id' values "
                 f"for every row; found {invalid_count} missing or empty value(s)."
             )
 
@@ -59,13 +59,13 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
         """Return the source ID used in a portable train-time augmentation key."""
         if "source_id" not in row.index:
             raise ValueError(
-                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "Controlled stochastic training requires a non-empty 'source_id' "
                 "column as its stable manifest identity."
             )
         source_id = row["source_id"]
         if pd.isna(source_id) or not str(source_id).strip():
             raise ValueError(
-                "Controlled H1-N stochastic training requires a non-empty 'source_id' "
+                "Controlled stochastic training requires a non-empty 'source_id' "
                 "value as its stable manifest identity."
             )
         return str(source_id).strip()
@@ -82,9 +82,12 @@ class ManifestImageDataset(Dataset[tuple[torch.Tensor, torch.Tensor, dict[str, s
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, dict[str, str]]:
         row = self.frame.iloc[index]
         with Image.open(Path(row.path)) as opened:
-            if getattr(self.transform, "preprocessing_protocol", None) == CONTROLLED_PREPROCESSING_PROTOCOL:
+            if (
+                getattr(self.transform, "preprocessing_protocol", None)
+                != LEGACY_PREPROCESSING_PROTOCOL
+            ):
                 # ``copy`` fully decodes the source raster while retaining orientation information
-                # for the controlled transform to normalise.
+                # for every controlled transform to normalise or validate.
                 image = opened.copy()
             else:
                 # Preserve the original legacy input conversion exactly for baseline reruns.

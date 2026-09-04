@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 from PIL import Image
 
 from ai_image_detector.baselines import (
@@ -8,7 +9,10 @@ from ai_image_detector.baselines import (
     radial_features,
     radial_preprocessing_metadata,
 )
-from ai_image_detector.features import CONTROLLED_PREPROCESSING_PROTOCOL
+from ai_image_detector.features import (
+    CONTROLLED_PREPROCESSING_PROTOCOL,
+    HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+)
 
 
 def test_file_metadata_control_has_expected_shape_and_scores(tmp_path) -> None:
@@ -49,3 +53,15 @@ def test_controlled_radial_metadata_records_deterministic_crop_for_all_splits() 
     assert metadata["crop_policy"] == "deterministic_center_square_all_splits"
     assert metadata["augmentation"] == "none"
     assert "neural_train_augmentation" not in metadata
+
+
+def test_highres_radial_features_reject_noncanonical_raster_instead_of_resizing(tmp_path) -> None:
+    path = tmp_path / "not_canonical.png"
+    Image.new("RGB", (383, 384), color="white").save(path)
+
+    with pytest.raises(ValueError, match="already materialised"):
+        radial_features(
+            pd.DataFrame({"path": [str(path)]}),
+            bins=8,
+            preprocessing_protocol=HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+        )

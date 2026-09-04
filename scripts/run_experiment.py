@@ -9,8 +9,10 @@ from typing import Any
 
 import pandas as pd
 
+from ai_image_detector.canonical_integrity import validate_defactify_exploratory_corpus
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     LEGACY_PREPROCESSING_PROTOCOL,
     FFTTransform,
     RGBTransform,
@@ -27,6 +29,7 @@ from ai_image_detector.reproducibility import (
 )
 from ai_image_detector.training import (
     LEGACY_LABEL_WEIGHTED_SAMPLER,
+    PAIRED_COMPONENT_BINARY_SAMPLER,
     PAIRED_GROUP_BALANCED_SAMPLER,
     TrainConfig,
     evaluate_and_save,
@@ -38,6 +41,11 @@ from ai_image_detector.training import (
 
 MODEL_ARCHITECTURE = "resnet50"
 
+PAIRED_SAMPLERS = {
+    PAIRED_GROUP_BALANCED_SAMPLER,
+    PAIRED_COMPONENT_BINARY_SAMPLER,
+}
+
 # `group_id` is retained alongside the derived `leakage_group`: the latter is the connected
 # component used for the grouped split, while the former is one of the original linking keys that
 # must also remain partition-disjoint. Checking both makes a malformed or stale component column
@@ -48,6 +56,11 @@ SPLIT_ISOLATION_REQUIRED_COLUMNS = (
     "source_id",
     "sha256",
     "phash",
+)
+HIGHRES_SOURCE_ISOLATION_COLUMNS = (
+    "source_sha256",
+    "source_pixel_sha256",
+    "source_phash",
 )
 SPLIT_ISOLATION_OPTIONAL_COLUMNS = ("caption",)
 
@@ -80,25 +93,29 @@ def _overlap_description(key: str, report: pd.DataFrame) -> str:
     )
 
 
-def validate_split_isolation(frame: pd.DataFrame) -> None:
+def validate_split_isolation(
+    frame: pd.DataFrame, *, require_highres_source_keys: bool = False
+) -> None:
     """Fail closed unless every exact leakage key is isolated to one manifest split.
 
     This guard deliberately checks the raw linking fields in addition to `leakage_group` before a
     model or artifact directory can be written. Captions are optional in supported manifests, but
     when supplied and nonblank, an exact repeated caption is still a split-isolation violation.
     """
-    missing = [column for column in SPLIT_ISOLATION_REQUIRED_COLUMNS if column not in frame]
+    required_columns = SPLIT_ISOLATION_REQUIRED_COLUMNS + (
+        HIGHRES_SOURCE_ISOLATION_COLUMNS if require_highres_source_keys else ()
+    )
+    missing = [column for column in required_columns if column not in frame]
     if missing:
         raise ValueError(
             "Cannot verify manifest split isolation because required column(s) are missing: "
             f"{missing}. Use a leakage-audited grouped manifest with leakage_group, group_id, "
-            "source_id, sha256, and phash; refusing to begin training or write model artifacts."
+            "source_id, sha256, and phash; the high-resolution canonical protocol additionally "
+            "requires source-level hashes. Refusing to begin training or write model artifacts."
         )
 
     blank_columns = [
-        column
-        for column in SPLIT_ISOLATION_REQUIRED_COLUMNS
-        if _blank_identifier_mask(frame[column]).any()
+        column for column in required_columns if _blank_identifier_mask(frame[column]).any()
     ]
     if blank_columns:
         raise ValueError(
@@ -107,7 +124,7 @@ def validate_split_isolation(frame: pd.DataFrame) -> None:
             "to begin training or write model artifacts."
         )
 
-    keys = (*SPLIT_ISOLATION_REQUIRED_COLUMNS,)
+    keys = (*required_columns,)
     keys += tuple(column for column in SPLIT_ISOLATION_OPTIONAL_COLUMNS if column in frame)
     overlaps: dict[str, pd.DataFrame] = {}
     for key in keys:
@@ -118,9 +135,7 @@ def validate_split_isolation(frame: pd.DataFrame) -> None:
         if not report.empty:
             overlaps[key] = report
     if overlaps:
-        details = "; ".join(
-            _overlap_description(key, report) for key, report in overlaps.items()
-        )
+        details = "; ".join(_overlap_description(key, report) for key, report in overlaps.items())
         raise ValueError(
             "Manifest failed the split-isolation gate: cross-split overlap(s) detected in "
             f"{details}. Rebuild the grouped manifest so every connected leakage component is "
@@ -169,6 +184,36 @@ def requested_launch_options(args: argparse.Namespace) -> dict[str, object]:
     }
 
 
+def resolve_train_sampler(preprocessing_protocol: str, requested_sampler: str | None) -> str:
+    """Resolve a protocol's declared sampler unless a documented ablation overrides it."""
+    if requested_sampler is not None:
+        return requested_sampler
+    if preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+        return PAIRED_COMPONENT_BINARY_SAMPLER
+    if preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
+        return PAIRED_GROUP_BALANCED_SAMPLER
+    return LEGACY_LABEL_WEIGHTED_SAMPLER
+
+
+def resolve_paired_group_column(
+    frame: pd.DataFrame,
+    preprocessing_protocol: str,
+    requested_column: str | None,
+) -> str:
+    """Choose the statistically matched unit without weakening the split-isolation unit.
+
+    The high-resolution Defactify corpus is split by `leakage_group`, which can deliberately
+    contain several caption pairs connected by a leakage safeguard. Training must still preserve
+    its original real/fake caption pair, so its default sampler unit is `group_id`. H1-N retains
+    its existing component-level pairing. An explicit CLI value remains a recorded ablation.
+    """
+    if requested_column is not None:
+        return resolve_group_column(frame, requested_column)
+    if preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL:
+        return resolve_group_column(frame, "group_id")
+    return resolve_group_column(frame, "leakage_group")
+
+
 def build_model_launch_metadata(
     *,
     manifest: dict[str, object],
@@ -180,10 +225,11 @@ def build_model_launch_metadata(
     preprocessing: dict[str, object],
     train_sampler: dict[str, object],
     trainable_parameters: int,
+    canonical_corpus_integrity: dict[str, object] | None = None,
 ) -> dict[str, Any]:
     """Build JSON-safe launch provenance without coupling it to training side effects."""
     pretrained = not bool(requested_options["from_scratch"])
-    return {
+    metadata: dict[str, Any] = {
         # Retain existing top-level facts so older local tooling can still read model.json.
         "device": resolved_device,
         "environment_at_launch": environment_at_launch,
@@ -206,6 +252,9 @@ def build_model_launch_metadata(
             "trainable_parameters": int(trainable_parameters),
         },
     }
+    if canonical_corpus_integrity is not None:
+        metadata["canonical_corpus_integrity"] = canonical_corpus_integrity
+    return metadata
 
 
 def main() -> None:
@@ -223,25 +272,34 @@ def main() -> None:
     parser.add_argument("--robust-augmentation", action="store_true")
     parser.add_argument(
         "--preprocessing-protocol",
-        choices=(CONTROLLED_PREPROCESSING_PROTOCOL, LEGACY_PREPROCESSING_PROTOCOL),
+        choices=(
+            CONTROLLED_PREPROCESSING_PROTOCOL,
+            HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            LEGACY_PREPROCESSING_PROTOCOL,
+        ),
         default=CONTROLLED_PREPROCESSING_PROTOCOL,
         help=(
-            "Controlled H1-N square-crop rasterization is the default. Select the legacy mode "
-            "only to reproduce the pre-H1-N baseline."
+            "Controlled H1-N crop rasterization is the default. The Defactify-HR canonical mode "
+            "accepts only the frozen 384px corpus; legacy mode is for baseline reproduction."
         ),
     )
     parser.add_argument(
         "--train-sampler",
-        choices=(PAIRED_GROUP_BALANCED_SAMPLER, LEGACY_LABEL_WEIGHTED_SAMPLER),
+        choices=(
+            PAIRED_GROUP_BALANCED_SAMPLER,
+            PAIRED_COMPONENT_BINARY_SAMPLER,
+            LEGACY_LABEL_WEIGHTED_SAMPLER,
+        ),
         default=None,
         help="Override the protocol's default sampler for a documented ablation.",
     )
     parser.add_argument(
         "--paired-group-column",
-        default="leakage_group",
+        default=None,
         help=(
-            "Leakage-free group identifier used by the controlled paired sampler; the default "
-            "falls back to group_id for compatible legacy manifests."
+            "Sampling unit for the controlled paired sampler. Defaults to leakage_group for H1-N "
+            "and group_id for the canonical high-resolution corpus; an explicit value is a "
+            "recorded ablation."
         ),
     )
     args = parser.parse_args()
@@ -255,23 +313,27 @@ def main() -> None:
     frame = load_manifest(manifest_path, check_paths=True)
     if sha256_file(manifest_path) != manifest_sha256:
         raise SystemExit("Manifest changed while the experiment launch was starting; rerun it.")
+    canonical_corpus_integrity = (
+        validate_defactify_exploratory_corpus(manifest_path, frame)
+        if args.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
+        else None
+    )
     required = {"train", "val", "test"}
     missing = required.difference(frame["split"])
     if missing:
         raise SystemExit(f"Manifest lacks required splits: {sorted(missing)}")
-    validate_split_isolation(frame)
+    validate_split_isolation(
+        frame,
+        require_highres_source_keys=(
+            args.preprocessing_protocol == HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL
+        ),
+    )
     manifest = manifest_launch_metadata(manifest_path, frame, manifest_sha256)
     preprocessing = preprocessing_metadata(args.preprocessing_protocol)
-    train_sampler = args.train_sampler
-    if train_sampler is None:
-        train_sampler = (
-            PAIRED_GROUP_BALANCED_SAMPLER
-            if args.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL
-            else LEGACY_LABEL_WEIGHTED_SAMPLER
-        )
+    train_sampler = resolve_train_sampler(args.preprocessing_protocol, args.train_sampler)
     paired_group_column = (
-        resolve_group_column(frame, args.paired_group_column)
-        if train_sampler == PAIRED_GROUP_BALANCED_SAMPLER
+        resolve_paired_group_column(frame, args.preprocessing_protocol, args.paired_group_column)
+        if train_sampler in PAIRED_SAMPLERS
         else None
     )
     image_size = int(preprocessing["image_size"])
@@ -316,7 +378,7 @@ def main() -> None:
         train=True,
         sampler_protocol=train_sampler,
         seed=args.seed,
-        group_column=paired_group_column or args.paired_group_column,
+        group_column=paired_group_column or "leakage_group",
     )
     val_loader = make_loader(
         frame[frame.split == "val"], eval_transform, args.batch_size, train=False, seed=args.seed
@@ -339,6 +401,7 @@ def main() -> None:
             preprocessing=preprocessing,
             train_sampler=sampler_metadata,
             trainable_parameters=trainable_parameter_count(model),
+            canonical_corpus_integrity=canonical_corpus_integrity,
         ),
         args.output_dir / "model.json",
     )
