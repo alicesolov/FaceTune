@@ -49,9 +49,11 @@ A logistic control using only geometry, encoded size, container, and colour mode
 validation ROC-AUC 0.713427 on the original files and 0.537373 on the canonical RGB PNG files.
 This is observed evidence that acquisition metadata are informative and that canonicalisation
 removes most, but not necessarily all, of that simple shortcut. Internal test was not read. The
-pre-registered MPS neural series is in progress; there is not yet a completed cross-seed neural
-result, robustness result, or external result. The local prototype therefore remains gated on a
-completed and explicitly selected checkpoint and must display an experimental model score rather
+three-seed practical MPS series completed on validation only: its ImageNet-pretrained RGB ResNet-50
+obtained mean ROC-AUC 0.987991 and mean balanced accuracy 0.951233. This practical result does not
+replace the predeclared equal-initialisation RGB-versus-FFT comparison, which remains pending; there
+is not yet a selected model, robustness result, internal-test result, or external result. The local
+prototype therefore remains gated and must eventually display an experimental model score rather
 than a probability or proof.
 
 A separate Defactify native384 sensitivity audit was materialised only to test whether canonical
@@ -80,7 +82,7 @@ reproducible machine learning; external validation.
 | BAcc | Balanced accuracy, the mean of the two class recalls. |
 | D0 | A diagnostic, legacy-preprocessing control that is retained for audit but excluded from model selection. |
 | H1-N | Historical amended Defactify hypothesis concerning a common 128 x 128 rasterisation and equal-budget RGB/FFT neural models. |
-| HighRes-v1 | Primary DANI study using a source-normalised 384 x 384 raster; the data gate passed and validation-only neural training is in progress. |
+| HighRes-v1 | Primary DANI study using a source-normalised 384 x 384 raster; the data gate and practical three-seed RGB validation series completed, while representation selection remains pending. |
 | *Model score* | A classifier output before calibration has been established; it is not called a probability. |
 
 ---
@@ -404,7 +406,7 @@ amended H1-N protocol is retained as a historical low-resolution pilot; it is no
 | Defactify native384 data-quality sensitivity audit | Observed; 16,328 retained rows, source/output hash audit passed | File-size-only ROC-AUC 0.650114 and BAcc 0.595238 are residual-bias evidence, not a detector result; no neural model is trained. |
 | DANI HighRes-v1 acquisition and split | Observed; 7,410 canonical rows, 1,482 parent groups, repeated integrity audit passed | Eligible for declared local training, but not by itself a performance result. |
 | DANI source metadata control | Observed on validation only | Original/canonical ROC-AUC 0.713427/0.537373; shortcut diagnostic, not detector evidence. |
-| DANI practical RGB MPS series | Pre-registered and in progress; test not read | Report every seed; pilot is excluded and no favourable seed may be selected. |
+| DANI practical RGB MPS series | Observed for seeds 7/17/42 on validation only; test not read | Mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and no favourable seed selected. |
 | HighRes-v1 robustness study | Not started | May begin only after the HighRes-v1 internal design is frozen. |
 | HighRes-v1 Synthbuster + RAISE-1k external evaluation | Locked, not opened for model selection | Confirmatory transfer evidence only after the HighRes-v1 checkpoint and threshold rule are frozen. |
 
@@ -676,14 +678,24 @@ The remaining weak association may reflect canonical PNG size/content correlatio
 dataset-bias warning and is unavailable to the pixel model as an explicit feature. The internal
 test was not evaluated for either control.
 
-At this snapshot the one-epoch MPS pilot has completed and the practical multi-seed validation
-series is running. Pilot metrics are excluded because the run was declared solely to test GPU
-allocation, data loading, checkpoint writing, and validation-only execution. Neural values will be
-inserted only after all three predeclared seeds complete; no partial seed result is promoted here.
+The one-epoch MPS pilot is excluded because it was declared solely to test GPU allocation, data
+loading, checkpoint writing, and validation-only execution. All three predeclared practical runs
+then completed without producing an internal-test metrics file. Their validation results were:
+
+| Seed | ROC-AUC | Balanced accuracy | Macro-F1 | FPR@TPR95 | ECE (15 bins) |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 7 | 0.987734 | 0.949552 | 0.927884 | 0.053812 | 0.021905 |
+| 17 | 0.987864 | 0.945628 | 0.922778 | 0.062780 | 0.027422 |
+| 42 | 0.988374 | 0.958520 | 0.926765 | 0.044843 | 0.023902 |
+| Mean ± sample SD | 0.987991 ± 0.000339 | 0.951233 ± 0.006609 | 0.925809 ± 0.002684 | 0.053812 ± 0.008969 | — |
+
+The numerically strongest seed is not promoted. This series answers whether the audited corpus and
+MPS training path yield a stable practical RGB signal; it does not answer whether RGB or FFT is the
+better controlled representation because it uses ImageNet pretraining and has no matched FFT arm.
 
 | Required result | Design rule | Status |
 | --- | --- | --- |
-| HighRes-v1 practical RGB models | Pretrained ResNet-50, seeds 7/17/42, fixed batch/learning-rate/epoch/patience and parent-paired sampler. | Validation-only series in progress; pilot excluded. |
+| HighRes-v1 practical RGB models | Pretrained ResNet-50, seeds 7/17/42, fixed batch/learning-rate/epoch/patience and parent-paired sampler. | Completed on validation only; mean ROC-AUC 0.987991 and mean BAcc 0.951233; pilot excluded and test unopened. |
 | HighRes-v1 representation comparison | Group-aware comparison only between models declared before internal test inspection. | Not started. |
 | Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | Not started. |
 | External Synthbuster + RAISE-1k test | Locked until HighRes-v1 architecture, checkpoint rule, seeds, and threshold are frozen; report per generator, relation category, aggregate, and worst-generator values. | Locked, not opened. |
@@ -767,13 +779,13 @@ metadata control showed measurable validation association, and its reduction aft
 demonstrates why container support must be separated from pixel evidence. This is a genuine
 negative-and-corrective data result rather than a reason to discard the corpus silently.
 
-The pre-registered validation-only MPS series must now finish before internal test is opened. It is
-followed by the equal-initialisation RGB/FFT comparison, group-aware uncertainty, robustness, and
-locked Synthbuster + RAISE-1k transfer evaluation. Until those stages produce a selected and
-externally assessed checkpoint, the local interface remains disabled. The current academic result
-is therefore a transparent limitation-aware baseline, a reproducible high-resolution corpus, and
-an active but not yet complete neural experiment—preferable to an inflated claim based on a source
-shortcut or a favourable pilot epoch.
+The pre-registered practical validation-only MPS series is complete, but it does not open the
+internal test. The equal-initialisation RGB/FFT comparison must first complete, followed by a frozen
+selection rule, group-aware uncertainty, robustness, and locked Synthbuster + RAISE-1k transfer
+evaluation. Until those stages produce a selected and externally assessed checkpoint, the local
+interface remains disabled. The current academic result is therefore a transparent
+limitation-aware baseline, a reproducible high-resolution corpus, and a stable three-seed practical
+validation result—not a claim based on a source shortcut or a favourable pilot epoch.
 
 ---
 
