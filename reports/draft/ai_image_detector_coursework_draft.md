@@ -36,14 +36,17 @@ protocol on Apple MPS. Its one-seed exploratory internal result was ROC-AUC 0.88
 accuracy 0.802917, macro-F1 0.704555, and FPR@TPR95 0.482500. It is not a completed RGB-versus-FFT
 comparison, a model-selection candidate, external evidence, or a high-resolution result.
 
-The primary next study, HighRes-v1, is separately pre-registered around source 512 x 512 PNG/RGB
-images and a common 384 x 384 raster. Its revision-pinned source catalog is being acquired and
-audited; at this snapshot there is no final materialised corpus, leakage-audited split, trained
-HighRes-v1 model, robustness result, or external result. The report consequently offers a
-reproducible protocol and limited historical exploratory observations, not a claim of general
-AI-image detection. A local prototype is deliberately gated on a completed, explicitly selected
-HighRes-v1 checkpoint and must display an experimental model score rather than a probability or
-proof.
+The primary next study, HighRes-v1, is separately pre-registered around a common 384 x 384 raster
+from a controlled source of 512-pixel-or-larger images. A complete metadata audit rejected
+CommunityForensics-Small as a broad primary source: its common 512 x 512 PNG/RGB gate is almost
+entirely synthetic. B-Free is a conditional controlled 512-pixel candidate when its official
+archives can be reached and verified [13]. DANI is being audited only as a descriptive fallback:
+its public metadata does not expose a documented parent COCO/caption key [14]. There is no final
+materialised corpus, leakage-audited split, trained HighRes-v1 model, robustness result, or
+external result. The report consequently offers a reproducible protocol and limited historical
+exploratory observations, not a claim of general AI-image detection. A local prototype is
+deliberately gated on a completed, explicitly selected HighRes-v1 checkpoint and must display an
+experimental model score rather than a probability or proof.
 
 ## Keywords
 
@@ -212,8 +215,8 @@ split as explicit threats to validity. The risk is particularly important when e
 image has multiple synthetic counterparts. The current project addresses it by:
 
 - retaining the original Defactify split only as an audited benchmark reference;
-- for HighRes-v1, forming connected leakage groups from prompt/source links, exact file and pixel
-  hashes, and perceptual-hash candidates before split assignment;
+- for HighRes-v1, forming connected leakage groups from documented parent/source links, exact file
+  and pixel hashes, and perceptual-hash candidates before split assignment;
 - allocating complete groups to one partition only;
 - reporting a deliberately non-semantic metadata control as a bias diagnostic;
 - using one source-normalised raster for every pixel model; and
@@ -228,23 +231,35 @@ The emphasis is not on maximising a preliminary score, but on making a later res
 ## 3.1 HighRes-v1: primary study and current acquisition status
 
 HighRes-v1 is a separate pre-registered study rather than an upscaled continuation of Defactify.
-Its candidate reservoir is CommunityForensics-Small [10, 11] at revision
-`6c539a534c07917307c381f5af4053c6091b5278`. The source is used only for non-commercial coursework
-under its stated CC BY-NC-SA 4.0 terms; raw images and complete local manifests are never committed
-to Git or redistributed by this project.
+CommunityForensics-Small [10, 11] at revision
+6c539a534c07917307c381f5af4053c6091b5278 was first audited as a candidate reservoir. Its complete
+metadata catalog exposed a decisive confound: the strict jointly intended technical gate of 512 x
+512, PNG, RGB, and explicitly non-NSFW images contains 1,005 real rows and 228,833 generated rows.
+This source is therefore rejected for the general HighRes-v1 primary study. The gate is not loosened
+to obtain a larger but geometry- or encoder-confounded corpus. No HighRes-v1 model has been trained
+on this source.
 
-The planned inclusion gate accepts only source records with explicit 512 x 512 geometry, RGB mode,
-PNG format, and an explicit non-NSFW flag. A revision-pinned source locator and a prompt-derived
-grouping key are retained, while raw prompts and the binary image column are excluded from the
-metadata catalog. The common future raster is `highres_square_crop_384_v1`: a source square crop
-followed by one 384 x 384 LANCZOS resize. A source below the declared 512-pixel minimum is rejected
-rather than upsampled.
+The preferred conditional alternative is the B-Free controlled comparison [13]. If its official
+training archives become reachable, the planned core is COCO_real_512 against
+SD2.1_selfconditioned. Archive checksums, the authors' source identifiers, a source-ID group split,
+and a complete byte/pixel/duplicate audit are required before any model training. The project will
+not use an unofficial repack or redistribute raw images, local manifests, or archives.
 
-At the snapshot date, metadata acquisition and offline catalog audit are the only active HighRes-v1
-stages. No final selected image corpus, materialised image bytes, leakage-audited split, trained
-model, internal metric, robustness metric, or external metric exists. Candidate quotas,
-architecture/real-source strata, source-split treatment, and the training/selection rule will be
-declared only after the complete catalog audit and before any image bytes are read.
+DANI [14], revision 870e29fcdc13c405fae35442899e9ba1da11691d, is being scanned through its seven
+non-binary metadata fields only: index, declared size, category, class identifier, model,
+generation type, and reference flag. The binary image field is explicitly excluded. This allows a
+reproducible description of the 512/768/1024 generator strata without downloading image bytes.
+However, the public schema has no documented COCO parent-image or caption identifier. Its
+image-level index cannot be promoted to a pair key, and the catalog is deliberately blocked from
+internal selection, split assignment, or training until a separate mapping audit proves a stable
+parent group.
+
+The common future raster will be highres_square_crop_384_v1: a source square crop followed by one
+384 x 384 LANCZOS resize. A source below the frozen minimum is rejected rather than upsampled.
+No final selected image corpus, materialised image bytes, leakage-audited split, trained model,
+internal metric, robustness metric, or external metric exists. Candidate quotas, source/protocol
+strata, group treatment, and the training/selection rule will be declared only after the complete
+source and mapping audits and before any selected image bytes are read.
 
 ## 3.2 Historical low-resolution pilot: Defactify
 
@@ -737,6 +752,15 @@ preferable to an inflated claim based on a source shortcut.
 12. OwensLab. *CommunityForensics-Eval* dataset card, revision
     `7d4a74a88d2cac93b513c0853bf92c260eaceea0`, accessed 29 August 2026. Available at:
     <https://huggingface.co/datasets/OwensLab/CommunityForensics-Eval>.
+13. Guillaro, F., Zingarini, G., Usman, B., Sud, A., Cozzolino, D., and Verdoliva, L.
+    “A Bias-Free Training Paradigm for More General AI-generated Image Detection.” *Proceedings
+    of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)*, 2025. Official
+    training-data documentation: <https://raw.githubusercontent.com/grip-unina/B-Free/main/training_data/README.md>.
+14. Liu, R., Lyu, Z., Zhou, W., and Ng, S.-K. “D-Judge: How Far Are We? Assessing the
+    Discrepancies Between AI-synthesized Images and Natural Images through Multimodal Guidance.”
+    *ACM International Conference on Multimedia (MM)*, 2025. Dataset card, revision
+    870e29fcdc13c405fae35442899e9ba1da11691d:
+    <https://huggingface.co/datasets/Renyang/DANI>.
 
 ---
 

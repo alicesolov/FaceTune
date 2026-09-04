@@ -11,9 +11,9 @@ There are two deliberately separate research tracks:
 - **H1-N / Defactify 128 x 128** — a historical low-resolution pilot that established geometry
   controls. Its planned multi-seed series was stopped before completion and is not eligible for
   model selection, external validation or the interface.
-- **HighRes-v1 / 384 x 384** — the primary study now being assembled from a revision-pinned,
-  audited high-quality source. It begins with a metadata-only source catalog; no high-resolution result
-  is claimed until the source, split and materialised files have passed the protocol.
+- **HighRes-v1 / 384 x 384** — the primary study is in source-selection and mapping-audit stage.
+  No high-resolution result is claimed until a controlled source, split and materialised files have
+  passed the protocol.
 
 ## Research questions and status
 
@@ -102,13 +102,14 @@ that script rejects a single run and never picks a best test-set seed.
 The historical source is [Defactify Image Dataset](https://huggingface.co/datasets/Rajarshi-Roy-research/Defactify_Image_Dataset).
 It remains preserved for the 128 x 128 pilot only; it is not enlarged by upsampling.
 
-The HighRes-v1 train/validation candidate reservoir is
-[CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small), pinned
-to revision `6c539a534c07917307c381f5af4053c6091b5278`. The new
-`scripts/scan_community_forensics_metadata.py` stage reads only Parquet metadata first and creates
-an ignored local source lock/source catalog. It deliberately excludes binary image data and
-does not make a partial scout eligible for training. See [HighRes-v1](docs/HIGHRES_V1_PROTOCOL.md)
-and [data/README.md](data/README.md) before materialising any image.
+The first HighRes-v1 candidate,
+[CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small) at
+revision 6c539a534c07917307c381f5af4053c6091b5278, is now a documented rejected source for the
+general primary study. Its complete metadata audit showed that the strict common 512 x 512 PNG/RGB
+gate is overwhelmingly synthetic, so no HighRes-v1 model is trained from it and the gate is not
+silently relaxed. The scanner and audit remain in the repository as reproducibility evidence for
+that decision. See [HighRes-v1](docs/HIGHRES_V1_PROTOCOL.md) and
+[data/README.md](data/README.md) before materialising any image.
 
 ```bash
 # Metadata only: full source catalog, source lock, and provenance. It does not download image bytes.
@@ -130,6 +131,19 @@ catalogue is automatically marked partial and cannot be used for selection or tr
 The audit refuses a partial scan, a changed catalog, or raw image/prompt columns. It reports the
 inclusion-gate counts, class balance, source/model strata and metadata-level duplicate signals; it
 does not select or download an image.
+
+The active descriptive source audit is [DANI](https://huggingface.co/datasets/Renyang/DANI), pinned
+to revision 870e29fcdc13c405fae35442899e9ba1da11691d. Its scanner reads exactly seven non-binary
+fields and creates a locked catalogue without requesting the image field. The public schema has no
+documented COCO parent/caption group, so even a complete DANI catalogue is deliberately blocked from
+internal selection, split assignment and training until a separate mapping audit proves that group.
+
+    .venv/bin/python scripts/scan_dani_metadata.py --output-dir data/processed/dani_metadata_v1
+
+    .venv/bin/python scripts/audit_dani_catalog.py data/processed/dani_metadata_v1 --output-dir artifacts/audits/dani_metadata_v1
+
+The DANI audit is offline and refuses an incomplete scout, changed source evidence, an image field
+in the catalogue, or any attempt to mark the metadata-only source as trainable.
 
 `Synthbuster + RAISE-1k` is a separately held-out external benchmark; it must not enter training,
 model selection, threshold selection or augmentation selection. The preparation script does not
@@ -160,7 +174,7 @@ stage, not a throwaway helper:
 | Stage | Entry points |
 | --- | --- |
 | Acquire and audit internal data | `prepare_defactify.py`, `audit_manifest.py`, `make_grouped_split.py` |
-| Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py`, `audit_highres_catalog.py` |
+| Audit HighRes-v1 source metadata | `scan_community_forensics_metadata.py`, `audit_highres_catalog.py`, `scan_dani_metadata.py`, `audit_dani_catalog.py` |
 | Train and analyse internal models | `run_baselines.py`, `run_experiment.py`, `analyze_predictions.py`, `aggregate_experiments.py` |
 | Frozen validation only | `prepare_synthbuster_external.py`, `evaluate_external.py`, `evaluate_robustness.py` |
 

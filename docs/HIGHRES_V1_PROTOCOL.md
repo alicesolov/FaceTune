@@ -1,7 +1,7 @@
 # HighRes-v1: protocol for a higher-resolution image corpus
 
-**Status:** pre-registered acquisition protocol. The corpus is not yet materialised and this file
-contains no model result.
+**Status:** source-selection protocol, amended after the first full source audit. The corpus is not
+yet materialised and this file contains no high-resolution model result.
 
 ## Why this is a separate study
 
@@ -25,77 +25,87 @@ budget.
 This study may report performance **on named datasets and transformations**. It cannot prove the
 origin of an arbitrary uploaded image or authenticate an image in the forensic sense.
 
-## Sources and roles
+## Source decisions and roles
 
-| Role | Source | Permitted use |
+| Role | Source | Decision and permitted use |
 | --- | --- | --- |
-| Train and validation candidate reservoir | [CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small), revision `6c539a534c07917307c381f5af4053c6091b5278` | Build one fixed, auditable local corpus only. The release is CC BY-NC-SA 4.0, so it is for this non-commercial coursework/research use and is never added to Git or redistributed. |
+| Rejected broad-source candidate | [CommunityForensics-Small](https://huggingface.co/datasets/OwensLab/CommunityForensics-Small), revision 6c539a534c07917307c381f5af4053c6091b5278 | The complete metadata-only audit found that the strict common 512 x 512, PNG, RGB, explicitly non-NSFW gate leaves 1,005 real rows and 228,833 generated rows. This is a class/source shortcut, not a valid general primary corpus. No model is trained on it and the gate is not silently loosened. A separate face-only cohort may be studied later only under its own protocol. |
+| Conditional controlled primary candidate | [B-Free training data](https://raw.githubusercontent.com/grip-unina/B-Free/main/training_data/README.md) | If the authors' official data server becomes reachable, the planned core comparison is COCO_real_512 against SD2.1_selfconditioned, with archive checksum verification, source-ID group split and a full byte/pixel audit. The corpus is not currently materialised; no unofficial repack will be substituted. |
+| Descriptive fallback under audit, not an internal corpus | [DANI](https://huggingface.co/datasets/Renyang/DANI), revision 870e29fcdc13c405fae35442899e9ba1da11691d | A revision-pinned metadata-only scan is used to audit declared size, generator, type and class composition without requesting image bytes. Its public non-binary schema has no documented COCO parent/caption group, so it is blocked from internal candidate selection, split assignment and training until a separate mapping audit proves a stable parent key. |
 | Locked external benchmark | [Synthbuster](https://zenodo.org/records/10066460) + [RAISE-1k](https://loki.disi.unitn.it/RAISE/download.html) | Open only after the HighRes-v1 architecture, validation rule, seed protocol and threshold are frozen. RAISE must never enter training. |
 | Conditional descriptive benchmark | [CommunityForensics-Eval](https://huggingface.co/datasets/OwensLab/CommunityForensics-Eval), revision `7d4a74a88d2cac93b513c0853bf92c260eaceea0` | Do not use for training or selection. Before any score, run exact- and perceptual-hash contamination checks against the materialised corpus and respect its FFHQ/COCO split restrictions. A passed check supports a clearly labelled cross-dataset result; a failed or inconclusive check excludes it. |
 | Optional second independent benchmark | [GenImage official test split](https://github.com/GenImage-Dataset/GenImage) | Evaluate only after the first external benchmark is locked. Report every generator separately rather than calling the whole set “unseen”. |
 
-The Small dataset card describes paired real and generated images, 4,803 generator models, image
-resolution and generator/source metadata. Its authors also warn that many generators derive from
-Stable Diffusion and that caption/source biases remain. Those are threats to validity to measure,
-not properties to hide.
+The source decision is a gate, not an implementation detail. A large nominal resolution does not
+make a usable training source: the two labels must be jointly supported in a controlled source
+stratum; source-level and semantic leakage groups must be reproducible; and decoded image evidence
+must later confirm that format, resolution or export pipeline has not become the classifier.
+
+For DANI in particular, the documentation establishes COCO-derived generation history, but the
+public catalogue exposes only an image-level index, not a parent COCO/caption key. Row order,
+category, class identifier, or a shared generator name must never be used to guess pair membership.
+Until that missing mapping is recovered from a revision-pinned non-binary source, DANI can support
+source analysis or a future locked descriptive test only.
 
 ## Immutable inclusion gate
 
-The metadata scan reads no image bytes. Before any selected image is downloaded, each source-catalog
-must meet all of the following conditions:
+The metadata scan reads no image bytes. Before any selected image is downloaded, a source-catalog
+must first pass the source-decision gate above and then meet all of the following conditions:
 
 | Field | Rule | Reason |
 | --- | --- | --- |
-| `resolution` | `width = height = 512` in the first release, or a later explicitly recorded larger square | 384-pixel training never uses an upscaled source and both labels share geometry. |
-| `format`, `mode` | `PNG`, `RGB` | Prevent a container/mode shortcut from being the classifier. |
-| `nsfw_flag` | Explicitly false | Keep the research corpus suitable for the coursework environment; do not infer missing flags as false. |
-| `label`, `architecture`, `model_name` | Binary label is valid; real rows declare `real`; synthetic rows have a nonempty generator and non-real architecture | Preserve class provenance and reject contradictory metadata. |
+| resolution | width = height = 512 in the first release, or a later explicitly recorded larger square | 384-pixel training never uses an upscaled source and both labels share geometry. A declared source size is not treated as decoded-byte proof. |
+| decoded container and mode | A later byte-level audit confirms one allowed format and RGB mode for both labels, or explicitly records a balanced conversion policy | Prevent a container or colour-mode shortcut from becoming the classifier. |
+| content suitability | A documented source rule excludes unsuitable material; missing metadata are not silently treated as safe | Keep the coursework corpus within its stated scope. |
+| origin metadata | Binary origin is valid; real rows have a declared real source and synthetic rows have a nonempty generator/protocol | Preserve class provenance and reject contradictory metadata. |
+| leakage group | A documented, reproducible parent/source group exists before split assignment | Do not infer pairing from row order, generic category, or a coincidental index. |
 | provenance | Revision-pinned shard path and row number are recorded | A row can be reproduced without relying on mutable dataset ordering. |
 
 The selection specification will also declare a deterministic seed, class balance, maximum quota
-per generator, architecture/subset and real-source strata, and the intended train/validation/test
-roles. Its SHA-256 is part of the experiment identity. Quotas are intentionally **not** guessed
-before the full metadata audit establishes how many valid, diverse rows exist.
+per generator, source/protocol and real-source strata, a documented group key, and the intended
+train/validation/test roles. Its SHA-256 is part of the experiment identity. Quotas are
+intentionally **not** guessed before the full metadata audit establishes how many valid, diverse
+rows exist.
 
 The selection stage is fail-closed. It must reject an incomplete or hash-mismatched catalog, a
-duplicate source locator, an inconsistent prompt-derived group, contradictory
-`label`/`architecture`/`model_name` semantics, or an insufficient jointly supported source stratum
-for the two classes. It must also record a deterministic rank for every eligible locator and a
-pre-ranked reserve. A damaged or duplicate image may be replaced only by the next reserve item
-from that frozen rank: neither manual curation nor a fresh random draw is permitted after image
-bytes have been inspected.
+duplicate source locator, a missing or contradictory documented group, contradictory origin
+semantics, or an insufficient jointly supported source stratum for the two classes. It must also
+record a deterministic rank for every eligible locator and a pre-ranked reserve. A damaged or
+duplicate image may be replaced only by the next reserve item from that frozen rank: neither
+manual curation nor a fresh random draw is permitted after image bytes have been inspected.
 
 ## Acquisition and leakage audit
 
-1. Record a source lock: repository ID, immutable revision, licence, every Parquet shard path,
-   byte size, blob/LFS/Xet identifier and scan date.
-2. Column-scan only metadata fields. The binary `image_data` field is excluded at the Parquet read,
-   rather than removed after iteration. The source catalog stores a stable source locator,
-   dimensions, label, generator/source strata and a hash of the normalised prompt; it stores no
-   image data or full prompts.
-3. Audit the source catalog before choosing a quota: class counts, source resolution,
-   format/mode, NSFW status, real-source distribution, generator/architecture distribution,
-   repeated image names and prompt groups. A partial scout is never eligible to become a research
-   manifest.
+1. Record a source lock: repository ID, immutable revision, licence, every source shard or archive,
+   byte size, content identifier/checksum and scan date.
+2. Column-scan only explicitly declared non-binary metadata fields. The binary image field is
+   excluded at the Parquet read rather than removed after iteration. The source catalog stores a
+   stable locator, declared dimensions, origin/generator strata and only permitted group metadata;
+   it stores no image data or prompts.
+3. Audit the complete source catalog before choosing a quota: class counts, declared resolution,
+   real-source and generator/protocol distributions, source-shard distribution, repeated identifiers
+   and whether a documented parent group is actually available. A partial scout is never eligible
+   to become a research manifest.
 4. Freeze the catalog-derived selection manifest. Only then materialise the exact selected rows.
    The materialiser must verify that each received row agrees with its pinned catalog metadata and
-   that its actual decoded bytes are PNG, RGB, 512 x 512 and non-corrupt. For every accepted file
-   record byte SHA-256, decoded-pixel SHA-256, perceptual hash, decoded dimensions and byte count.
-   Original images and the complete local manifest remain outside Git.
-5. Build the duplicate graph before assigning any HighRes-v1 partition. Its edges include source
-   prompt/content groups, exact file or pixel hashes, and perceptual-hash candidates. An identical
-   decoded image with conflicting labels is quarantined rather than silently assigned a preferred
-   label; a perceptually close pair is a leakage boundary, not proof of identity. Exact duplicates
-   within one label are reduced deterministically to one canonical instance.
+   that its actual decoded bytes meet the declared geometry/container/mode policy and are
+   non-corrupt. For every accepted file record byte SHA-256, decoded-pixel SHA-256, perceptual hash,
+   decoded dimensions and byte count. Original images and the complete local manifest remain outside
+   Git.
+5. Build the duplicate graph before assigning any HighRes-v1 partition. Its edges include
+   documented parent/source groups, exact file or pixel hashes, and perceptual-hash candidates. An
+   identical decoded image with conflicting labels is quarantined rather than silently assigned a
+   preferred label; a perceptually close pair is a leakage boundary, not proof of identity. Exact
+   duplicates within one label are reduced deterministically to one canonical instance.
 6. Allocate splits by whole connected leakage components. Validation alone controls early stopping,
    hyperparameters, calibration and threshold. The internal test and all external sources remain
    untouched during those decisions.
 
-The dataset's published `split` field is preserved as source metadata. It is not silently replaced
-by a random split, and its relationship to HighRes-v1 roles will be stated in the frozen selection
-manifest. If that upstream field is documented and consistent, it becomes a hard boundary; if it is
-not a meaningful boundary, the new component-level split and its objective are declared explicitly,
-with a cross-tab against the upstream field retained in the final audit.
+If a source publishes an upstream split, preserve it as metadata. It is not silently replaced by a
+random split, and its relationship to HighRes-v1 roles will be stated in the frozen selection
+manifest. If the upstream field is documented and consistent, it becomes a hard boundary; if it is
+not meaningful, the new component-level split and its objective are declared explicitly, with a
+cross-tab against the upstream field retained in the final audit.
 
 ## Preprocessing and compute contract
 
