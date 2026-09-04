@@ -3,6 +3,9 @@ from PIL import Image
 
 from ai_image_detector.features import (
     CONTROLLED_PREPROCESSING_PROTOCOL,
+    DANI_HIGHRES_IMAGE_SIZE,
+    DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+    DANI_SOURCE_IMAGE_SIZE,
     HIGHRES_CANONICAL_IMAGE_SIZE,
     HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     DegradedTransform,
@@ -10,6 +13,7 @@ from ai_image_detector.features import (
     RGBTransform,
     apply_degradation,
     fft_magnitude,
+    preprocessing_metadata,
     radial_power_spectrum,
     require_canonical_highres_raster,
 )
@@ -64,4 +68,37 @@ def test_highres_canonical_protocol_accepts_only_frozen_common_raster() -> None:
         train=True,
         preprocessing_protocol=HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     )
+    assert train.uses_contextual_rng is True
+
+
+def test_dani_highres_protocol_downsamples_1024_to_384_without_accepting_substitutes() -> None:
+    source = Image.new("RGB", (DANI_SOURCE_IMAGE_SIZE, DANI_SOURCE_IMAGE_SIZE), color="white")
+    rgb = RGBTransform(train=False, preprocessing_protocol=DANI_HIGHRES_PREPROCESSING_PROTOCOL)
+    fft = FFTTransform(train=False, preprocessing_protocol=DANI_HIGHRES_PREPROCESSING_PROTOCOL)
+
+    assert rgb(source).shape == (3, DANI_HIGHRES_IMAGE_SIZE, DANI_HIGHRES_IMAGE_SIZE)
+    assert fft(source).shape == (3, DANI_HIGHRES_IMAGE_SIZE, DANI_HIGHRES_IMAGE_SIZE)
+    assert rgb.uses_contextual_rng is False
+    assert preprocessing_metadata(DANI_HIGHRES_PREPROCESSING_PROTOCOL) == {
+        "protocol": DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+        "version": "1.0",
+        "image_size": DANI_HIGHRES_IMAGE_SIZE,
+        "input_contract": "audited_exact_1024_square_source",
+        "crop_policy": "no_crop_exact_square_source",
+        "resize": "single_square_lanczos_downsample",
+        "upsampling_permitted": False,
+        "fft_input": "common_raster_only",
+        "neural_train_augmentation": {
+            "horizontal_flip": {
+                "probability": 0.5,
+                "applies_to": "train_only",
+                "order": "after_common_raster",
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="requires an audited 1024 x 1024"):
+        rgb(Image.new("RGB", (512, 512), color="white"))
+
+    train = RGBTransform(train=True, preprocessing_protocol=DANI_HIGHRES_PREPROCESSING_PROTOCOL)
     assert train.uses_contextual_rng is True

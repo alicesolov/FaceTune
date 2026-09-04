@@ -11,6 +11,10 @@ The project intentionally keeps two preprocessing protocols:
     makes one common 128 x 128 raster before either RGB features or an FFT are calculated.  This
     removes source aspect-ratio and interpolation policy as an accidental label cue.
 
+``highres_square_crop_384_v1``
+    The primary DANI protocol accepts only audited 1024 x 1024 source rasters, converts to RGB,
+    and performs one Lanczos downsample to 384 x 384. It never upscales a smaller substitute.
+
 ``defactify_hr_native384_canonical_v1``
     The exploratory Defactify-HR corpus is already materialised as a common RGB PNG native crop.
     This protocol accepts only that exact 384 x 384 raster and never revisits the original source
@@ -36,6 +40,10 @@ LEGACY_PREPROCESSING_PROTOCOL: Final = "legacy_resize_v1"
 CONTROLLED_PREPROCESSING_PROTOCOL: Final = "h1n_square_crop_128_v1"
 CONTROLLED_PREPROCESSING_VERSION: Final = "1.0"
 CONTROLLED_IMAGE_SIZE: Final = 128
+DANI_HIGHRES_PREPROCESSING_PROTOCOL: Final = "highres_square_crop_384_v1"
+DANI_HIGHRES_PREPROCESSING_VERSION: Final = "1.0"
+DANI_HIGHRES_IMAGE_SIZE: Final = 384
+DANI_SOURCE_IMAGE_SIZE: Final = 1024
 HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL: Final = "defactify_hr_native384_canonical_v1"
 HIGHRES_CANONICAL_PREPROCESSING_VERSION: Final = "1.0"
 HIGHRES_CANONICAL_IMAGE_SIZE: Final = 384
@@ -47,6 +55,7 @@ def _validate_protocol(protocol: str) -> str:
     supported = {
         LEGACY_PREPROCESSING_PROTOCOL,
         CONTROLLED_PREPROCESSING_PROTOCOL,
+        DANI_HIGHRES_PREPROCESSING_PROTOCOL,
         HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
     }
     if protocol not in supported:
@@ -73,6 +82,29 @@ def preprocessing_metadata(protocol: str, image_size: int | None = None) -> dict
             "eval_crop": "center_square_crop",
             "crop_policy": "seeded_random_square_train_center_square_eval",
             "resize": "single_square_lanczos",
+            "fft_input": "common_raster_only",
+            "neural_train_augmentation": {
+                "horizontal_flip": {
+                    "probability": CONTROLLED_TRAIN_HORIZONTAL_FLIP_PROBABILITY,
+                    "applies_to": "train_only",
+                    "order": "after_common_raster",
+                }
+            },
+        }
+    if protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL:
+        if image_size is not None and image_size != DANI_HIGHRES_IMAGE_SIZE:
+            raise ValueError(
+                "The DANI high-resolution protocol fixes the model raster at "
+                f"{DANI_HIGHRES_IMAGE_SIZE} x {DANI_HIGHRES_IMAGE_SIZE}."
+            )
+        return {
+            "protocol": protocol,
+            "version": DANI_HIGHRES_PREPROCESSING_VERSION,
+            "image_size": DANI_HIGHRES_IMAGE_SIZE,
+            "input_contract": f"audited_exact_{DANI_SOURCE_IMAGE_SIZE}_square_source",
+            "crop_policy": "no_crop_exact_square_source",
+            "resize": "single_square_lanczos_downsample",
+            "upsampling_permitted": False,
             "fft_input": "common_raster_only",
             "neural_train_augmentation": {
                 "horizontal_flip": {
@@ -145,6 +177,18 @@ def source_normalized_rasterize(
     return square.resize((size, size), resample=Image.Resampling.LANCZOS)
 
 
+def dani_highres_rasterize(image: Image.Image, *, size: int = DANI_HIGHRES_IMAGE_SIZE) -> Image.Image:
+    """Validate the audited DANI source geometry and downsample exactly once without upscaling."""
+    decoded = ImageOps.exif_transpose(image)
+    if decoded.size != (DANI_SOURCE_IMAGE_SIZE, DANI_SOURCE_IMAGE_SIZE):
+        raise ValueError(
+            "DANI high-resolution preprocessing requires an audited "
+            f"{DANI_SOURCE_IMAGE_SIZE} x {DANI_SOURCE_IMAGE_SIZE} source raster, got "
+            f"{decoded.size[0]} x {decoded.size[1]}"
+        )
+    return decoded.convert("RGB").resize((size, size), resample=Image.Resampling.LANCZOS)
+
+
 def fft_magnitude(image: Image.Image, size: int = 256) -> np.ndarray:
     """Return log FFT magnitude in [0, 1] without using image metadata.
 
@@ -199,7 +243,11 @@ class RGBTransform:
         # behaviour untouched permits exact reruns of the originally declared baseline.
         self.uses_contextual_rng = (
             self.preprocessing_protocol
-            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
+            in {
+                CONTROLLED_PREPROCESSING_PROTOCOL,
+                DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+                HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            }
             and self.train
         )
         transforms: list[object] = []
@@ -220,6 +268,14 @@ class RGBTransform:
         """Return the raster immediately before representation-specific encoding."""
         if self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
             image = source_normalized_rasterize(image, size=self.size, train=self.train, rng=rng)
+            image = _apply_train_augmentation(
+                image,
+                train=self.train,
+                robust_augmentation=self.robust_augmentation,
+                rng=rng,
+            )
+        elif self.preprocessing_protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL:
+            image = dani_highres_rasterize(image, size=self.size)
             image = _apply_train_augmentation(
                 image,
                 train=self.train,
@@ -265,7 +321,11 @@ class FFTTransform:
         self.robust_augmentation = robust_augmentation
         self.uses_contextual_rng = (
             self.preprocessing_protocol
-            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
+            in {
+                CONTROLLED_PREPROCESSING_PROTOCOL,
+                DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+                HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            }
             and self.train
         )
         self.normalize = v2.Normalize(IMAGENET_MEAN, IMAGENET_STD)
@@ -274,6 +334,14 @@ class FFTTransform:
         """Return the common spatial raster before calculating the FFT magnitude."""
         if self.preprocessing_protocol == CONTROLLED_PREPROCESSING_PROTOCOL:
             image = source_normalized_rasterize(image, size=self.size, train=self.train, rng=rng)
+            image = _apply_train_augmentation(
+                image,
+                train=self.train,
+                robust_augmentation=self.robust_augmentation,
+                rng=rng,
+            )
+        elif self.preprocessing_protocol == DANI_HIGHRES_PREPROCESSING_PROTOCOL:
+            image = dani_highres_rasterize(image, size=self.size)
             image = _apply_train_augmentation(
                 image,
                 train=self.train,
@@ -384,7 +452,11 @@ class DegradedTransform:
         base = self.base_transform
         if (
             getattr(base, "preprocessing_protocol", None)
-            in {CONTROLLED_PREPROCESSING_PROTOCOL, HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL}
+            in {
+                CONTROLLED_PREPROCESSING_PROTOCOL,
+                DANI_HIGHRES_PREPROCESSING_PROTOCOL,
+                HIGHRES_CANONICAL_PREPROCESSING_PROTOCOL,
+            }
             and hasattr(base, "rasterize")
             and hasattr(base, "encode_raster")
         ):
