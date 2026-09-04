@@ -21,15 +21,47 @@ path,label,split,generator,group_id,source_id
 Optional metadata such as `caption`, `width`, `height`, `format`, `file_bytes`, `sha256` and
 `phash` are retained for audit only and never passed to an image model.
 
+## HighRes-v1 source catalog
+
+HighRes-v1 is intentionally not a resized copy of Defactify. Its first source scan is
+metadata-only and writes ignored local records under `data/processed/`; no image bytes, raw prompts
+or Arrow cache are committed. See [the HighRes-v1 protocol](../docs/HIGHRES_V1_PROTOCOL.md) for the
+academic roles and freeze order.
+
+Before materialisation, each source-catalog record must include at least:
+
+```text
+source_locator,source_repository,source_revision,source_shard,source_row,
+source_image_name,label,width,height,format,mode,nsfw_flag,model_name,
+architecture,subset,real_source,prompt_sha256,prompt_group_id
+```
+
+`source_locator` has the revision-pinned form
+`repository@revision:parquet-shard:row-index`. `prompt_sha256` is an audit key, never an image
+model input. Empty prompts receive a row-specific `prompt_group_id` so they do not become one false
+leakage group. The first corpus gate accepts only 512 x 512 RGB PNG rows with an explicit non-NSFW
+flag; it rejects rather than upscales a smaller source for the 384 x 384 training raster.
+
+After the selected rows are downloaded, the final manifest adds decoded dimensions, exact file
+SHA-256, perceptual hash, byte count, local path and the frozen experiment split. The split uses
+leakage components rather than independent filenames and is audited again after hashes are known.
+
 ## Intended sources
 
-1. **Defactify Image Dataset** is the starting train/validation/internal-test benchmark.
+1. **Defactify Image Dataset** is the historical 128 x 128 pilot benchmark.
    Its card reports 96,000 images: 16,000 real MS COCO images and 16,000 each from Stable Diffusion
    2.1, SDXL, SD 3, DALL-E 3 and Midjourney v6. It reports a 42k/9k/45k split. Before interpreting
    that split, `01_internal_training.ipynb` must audit normalized-caption and exact-pHash overlap.
-2. **Synthbuster + RAISE-1k** is an external, locked test only. Its 9,000 synthetic images and
+2. **CommunityForensics-Small** at revision `6c539a534c07917307c381f5af4053c6091b5278` is the
+   HighRes-v1 train/validation candidate reservoir. Its Parquet scan must exclude `image_data` and
+   record a source lock before any selected row is materialised. It is research-only under its
+   CC BY-NC-SA 4.0 release and raw data are never redistributed from this repository.
+3. **Synthbuster + RAISE-1k** is an external, locked test only. Its 9,000 synthetic images and
    1,000 real images are not to be used for threshold selection, early stopping or augmentations.
-3. **CIFAKE** may be used only for a very small smoke run that proves the code executes. It is not
+4. **CommunityForensics-Eval** is conditional descriptive external evidence only after exact/pHash
+   contamination audit; its FFHQ/COCO split rules and prohibition on RAISE training must be
+   respected. It cannot repair a model chosen on its own scores.
+5. **CIFAKE** may be used only for a very small smoke run that proves the code executes. It is not
    representative evidence for the target task because its images are 32x32.
 
 Raw data must retain original source and license information. The project does not assert that an

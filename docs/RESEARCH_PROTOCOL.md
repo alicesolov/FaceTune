@@ -1,13 +1,24 @@
 # Research protocol: FFT features for real-versus-synthetic images
 
-**Status:** amended and locked before H1-N neural runs; D0 diagnostic controls already observed.
+**Status:** historical Defactify protocol. D0 diagnostic controls and a partial 128 x 128 pilot
+were observed; the predeclared H1-N series was intentionally stopped before completion.
 **Scope:** still images of general scenes; no face or video claims.
+
+## Current project status
+
+This document preserves the 128 x 128 Defactify design so its diagnostic and pilot artifacts remain
+reproducible. It is **not** the primary high-resolution study, and no further H1-N runs should be
+launched from it. Because the six-run series was not completed, no H1-N checkpoint is eligible for
+selection, external scoring or the local interface.
+
+The new primary study has a separate source, manifest, split and preprocessing contract in
+[HighRes-v1](HIGHRES_V1_PROTOCOL.md). Its results must never be pooled with H1-N values.
 
 The original Defactify protocol is superseded where stated by
 [the geometry-control amendment](PROTOCOL_AMENDMENT_GEOMETRY_CONTROL.md). That amendment is part
 of the research record: it documents why D0 results cannot be presented as a detector claim.
 
-## Research question
+## Historical research question
 
 Under common source-normalised rasterisation, does an FFT-magnitude representation improve a
 real-versus-synthetic classifier relative to an RGB classifier of equal capacity and training
@@ -54,8 +65,9 @@ seeded-random square crop, whereas the fixed-feature radial baseline uses a dete
 crop for every split; the two roles must not be conflated. The grouped internal test was viewed for
 D0, so amended internal results are exploratory stress-test evidence rather than a confirmatory
 test. The external test is required before any transfer claim.
-- Repeat each neural representation for seeds 7, 17 and 42. Report mean, standard deviation and
-  95% bootstrap intervals; do not choose a best test-set seed.
+- The original plan was to repeat each neural representation for seeds 7, 17 and 42. That series
+  was deliberately stopped, so it must not be completed opportunistically or used to select a
+  model after the high-resolution decision.
 
 ## Models and equal budget
 
@@ -75,12 +87,16 @@ The FFT version discards phase and colour. It is a hypothesis baseline, not a de
 representation is optimal. D0 legacy controls remain in the artefact directory but do not influence
 H1-N selection.
 
-## Frozen selection and external scoring rule
+## Historical selection and external scoring rule (not activated)
 
-Before opening the external data, complete the six predeclared H1-N runs and their analysis
-artifacts. The internal grouped test remains reportable exploratory evidence, but it does **not**
-choose a representation, checkpoint, threshold, or seed. A later local prototype follows this
-fixed validation-only rule:
+This rule is retained to document the original safeguards. Its prerequisites were not met and it
+must not be applied to the partial H1-N pilot. The analogous HighRes-v1 rule will be frozen only
+after its manifest audit.
+
+Had the six predeclared H1-N runs and their analysis artifacts completed before opening external
+data, the internal grouped test would still have been reportable exploratory evidence but would
+**not** have chosen a representation, checkpoint, threshold or seed. A later local prototype would
+have followed this validation-only rule:
 
 1. Aggregate validation balanced accuracy over seeds 7, 17 and 42 for each representation.
 2. Select the representation with the larger mean validation balanced accuracy; an exact tie uses
