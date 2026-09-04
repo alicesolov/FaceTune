@@ -2,7 +2,7 @@
 
 ## Frequency-domain representations for experimental detection of AI-generated images
 
-**Research snapshot:** 30 August 2026; **status:** evidence-bound working draft. Only results
+**Research snapshot:** 31 August 2026; **status:** evidence-bound working draft. Only results
 marked *observed* have completed metrics; in-progress or pending results are not imputed,
 estimated, or described as completed.
 
@@ -36,19 +36,23 @@ protocol on Apple MPS. Its one-seed exploratory internal result was ROC-AUC 0.88
 accuracy 0.802917, macro-F1 0.704555, and FPR@TPR95 0.482500. It is not a completed RGB-versus-FFT
 comparison, a model-selection candidate, external evidence, or a high-resolution result.
 
-The primary next study, HighRes-v1, is separately pre-registered around a common 384 x 384 raster
-from a controlled source of 512-pixel-or-larger images. A complete metadata audit rejected
-CommunityForensics-Small as a broad primary source: its common 512 x 512 PNG/RGB gate is almost
-entirely synthetic. B-Free is a conditional controlled 512-pixel candidate when its official
-archives can be reached and verified [13]. DANI remains a descriptive fallback [14]. Its
-path-derived candidate keys match both a pinned D-Judge mapping and the checksum-locked official
-COCO 2017 captions. A conservative local non-commercial rule retains only Flickr licence IDs 2 and
-4, while image-byte quality and the final grouped split are not yet verified.
-There is no final materialised corpus, leakage-audited split, trained HighRes-v1 model, robustness
-result, or external result. The report consequently offers a reproducible protocol and limited
-historical exploratory observations, not a claim of general AI-image detection. A local prototype is
-deliberately gated on a completed, explicitly selected HighRes-v1 checkpoint and must display an
-experimental model score rather than a probability or proof.
+The primary HighRes-v1 study is now frozen around a common 384 x 384 raster from DANI [14]. The
+selected local corpus has 7,410 exact 1024 x 1024 images from 1,482 COCO parent groups: one real
+COCO photograph and four generated conditions per parent. Whole parents form train, validation,
+and internal-test partitions. The original-byte audit found no exact duplicate, cross-label exact
+duplicate, cross-parent pHash link at distance at most four, or cross-split component, but it did
+find label-dependent JPEG/PNG and L/RGB support. The source rasters were therefore converted to a
+separate 1024 x 1024 RGB PNG corpus without resizing, with source-to-derived hashes retained. A
+fresh audit passed all training gates.
+
+A logistic control using only geometry, encoded size, container, and colour mode obtained
+validation ROC-AUC 0.713427 on the original files and 0.537373 on the canonical RGB PNG files.
+This is observed evidence that acquisition metadata are informative and that canonicalisation
+removes most, but not necessarily all, of that simple shortcut. Internal test was not read. The
+pre-registered MPS neural series is in progress; there is not yet a completed cross-seed neural
+result, robustness result, or external result. The local prototype therefore remains gated on a
+completed and explicitly selected checkpoint and must display an experimental model score rather
+than a probability or proof.
 
 A separate Defactify native384 sensitivity audit was materialised only to test whether canonical
 output geometry and upstream-role preservation remove the observed source shortcut. It retained
@@ -76,7 +80,7 @@ reproducible machine learning; external validation.
 | BAcc | Balanced accuracy, the mean of the two class recalls. |
 | D0 | A diagnostic, legacy-preprocessing control that is retained for audit but excluded from model selection. |
 | H1-N | Historical amended Defactify hypothesis concerning a common 128 x 128 rasterisation and equal-budget RGB/FFT neural models. |
-| HighRes-v1 | Separately pre-registered primary study using a source-normalised 384 x 384 raster; no result exists at the snapshot date. |
+| HighRes-v1 | Primary DANI study using a source-normalised 384 x 384 raster; the data gate passed and validation-only neural training is in progress. |
 | *Model score* | A classifier output before calibration has been established; it is not called a probability. |
 
 ---
@@ -250,11 +254,9 @@ This source is therefore rejected for the general HighRes-v1 primary study. The 
 to obtain a larger but geometry- or encoder-confounded corpus. No HighRes-v1 model has been trained
 on this source.
 
-The preferred conditional alternative is the B-Free controlled comparison [13]. If its official
-training archives become reachable, the planned core is COCO_real_512 against
-SD2.1_selfconditioned. Archive checksums, the authors' source identifiers, a source-ID group split,
-and a complete byte/pixel/duplicate audit are required before any model training. The project will
-not use an unofficial repack or redistribute raw images, local manifests, or archives.
+The B-Free controlled comparison [13] remains a desirable later external or training ablation if
+its official archives can be reached and verified. It was not substituted with an unofficial
+repack and is not the materialised primary corpus reported here.
 
 For a separate Defactify native384 sensitivity audit, one real and one fake were selected per
 caption group, output crops were canonical 384 x 384 RGB PNGs, and the original upstream
@@ -277,17 +279,29 @@ labels. This is evidence that the reconstructed keys agree with the pinned D-Jud
 official COCO identity claim. The official COCO audit then matched all 5,000 filenames and all
 25,014 caption ID/parent/text tuples exactly; every parent is from COCO `val2017`. The
 licence/provenance decision allows only local non-commercial coursework use, attribution, and no
-raw redistribution. To avoid unresolved NoDerivs, ShareAlike, or ambiguous records, the future
-metadata selection accepts only official Flickr licence IDs 2 and 4. Internal split assignment and
-training remain blocked until the selection is frozen and its image bytes pass the declared
-data-quality checks.
+raw redistribution. To avoid unresolved NoDerivs, ShareAlike, or ambiguous records, the frozen
+selection accepts only official Flickr licence IDs 2 and 4.
 
-The common future raster will be highres_square_crop_384_v1: a source square crop followed by one
-384 x 384 LANCZOS resize. A source below the frozen minimum is rejected rather than upsampled.
-No final selected image corpus, materialised image bytes, leakage-audited split, trained model,
-internal metric, robustness metric, or external metric exists. Candidate quotas, source/protocol
-strata, group treatment, and the training/selection rule will be declared only after the complete
-source and mapping audits and before any selected image bytes are read.
+The final selection contains 1,482 eligible COCO parents and five cells per parent: `real_coco`,
+`fake_dalle3_t2i`, `fake_sdxl_i2i`, `fake_sdxl_t2i`, and `fake_sdxl_ti2i`. Whole parents were
+assigned to train, validation, and internal test, producing 5,185, 1,115, and 1,110 rows
+respectively. Every decoded image is exactly 1024 x 1024. The first byte-level audit found zero
+exact duplicate groups, zero cross-label exact duplicates, zero cross-parent pHash links at Hamming
+distance at most four, and zero cross-split integrity components. It nevertheless failed closed
+because real files supported JPEG and modes RGB/L, while generated files supported JPEG/PNG and
+mode RGB.
+
+The original 3.1 GB materialisation was retained unchanged. A deterministic derivative applies
+EXIF orientation, converts decoded pixels to RGB, and stores an exact 1024 x 1024 PNG without
+resizing. Its 8.2 GB local corpus includes a source-lineage CSV with original and canonical byte,
+pixel, and perceptual hashes. A fresh audit found the same zero duplicate/leakage counts and uniform
+PNG/RGB support, producing the training-manifest SHA-256
+`3b88920920add51ef8c55b225817448b759c05a8d5bfc1cee11bc6befced2855`.
+
+The common raster is `highres_square_crop_384_v1`: exact 1024 x 1024 source validation followed by
+one 384 x 384 LANCZOS downsample. No upsampling or second source resize is permitted. The frozen
+split and validation-only training rules were declared before neural performance was inspected.
+Internal test and external corpora remain locked during model selection.
 
 ## 3.2 Historical low-resolution pilot: Defactify
 
@@ -381,14 +395,16 @@ showed that geometry and canonical PNG byte size almost perfectly separated the 
 path was reclassified as **D0: diagnostic benchmark replication**, not as a detector result. The
 amended H1-N protocol is retained as a historical low-resolution pilot; it is not the primary study.
 
-| Stage | Status on 29 August 2026 | Interpretation rule |
+| Stage | Status on 31 August 2026 | Interpretation rule |
 | --- | --- | --- |
 | D0 legacy radial FFT and metadata control | Observed, historical Defactify diagnostic | Bias diagnostics only; never model-selection or deployment evidence. |
 | H1-N controlled radial FFT logistic regression, seed 7 | Observed | Exploratory internal low-resolution stress-test evidence only. |
 | H1-N RGB ResNet-50, seed 7 | Observed; launch-time provenance and `mps` device are recorded | A one-seed 128 x 128 pilot, not a completed representation comparison, selection candidate, external-validation candidate, or HighRes-v1 result. |
 | Remaining H1-N RGB seeds and all H1-N FFT ResNet-50 runs | Intentionally stopped | The historical series will not be completed opportunistically after the high-resolution decision. |
 | Defactify native384 data-quality sensitivity audit | Observed; 16,328 retained rows, source/output hash audit passed | File-size-only ROC-AUC 0.650114 and BAcc 0.595238 are residual-bias evidence, not a detector result; no neural model is trained. |
-| HighRes-v1 source acquisition and split | Pre-registered; no final materialised corpus or frozen selection manifest | No HighRes-v1 training or performance result may be claimed. |
+| DANI HighRes-v1 acquisition and split | Observed; 7,410 canonical rows, 1,482 parent groups, repeated integrity audit passed | Eligible for declared local training, but not by itself a performance result. |
+| DANI source metadata control | Observed on validation only | Original/canonical ROC-AUC 0.713427/0.537373; shortcut diagnostic, not detector evidence. |
+| DANI practical RGB MPS series | Pre-registered and in progress; test not read | Report every seed; pilot is excluded and no favourable seed may be selected. |
 | HighRes-v1 robustness study | Not started | May begin only after the HighRes-v1 internal design is frozen. |
 | HighRes-v1 Synthbuster + RAISE-1k external evaluation | Locked, not opened for model selection | Confirmatory transfer evidence only after the HighRes-v1 checkpoint and threshold rule are frozen. |
 
@@ -415,11 +431,10 @@ name, group ID, or other manifest metadata.
 
 ## 4.3 Pre-registered HighRes-v1 data and compute contract
 
-HighRes-v1 will use a new identifier, `highres_square_crop_384_v1`, rather than an H1-N alias. It
-will EXIF-normalise, decode to RGB, take a deterministic evaluation or seeded training square crop
-from the source raster, and make one common 384 x 384 LANCZOS raster before RGB or FFT
-representation processing. The data loader will reject a source below the 512-pixel source minimum
-instead of upsampling it.
+HighRes-v1 uses the identifier `highres_square_crop_384_v1`, rather than an H1-N alias. The
+canonical DANI source has already been EXIF-normalised and stored as exact 1024 x 1024 RGB PNG.
+The loader verifies the exact source geometry and makes one common 384 x 384 LANCZOS raster before
+RGB or FFT representation processing. It rejects a smaller substitute rather than upsampling it.
 
 The initial Apple MPS device benchmark established that a scratch ResNet-50 training step at 384
 pixels is feasible within the requested unified-memory budget: batch 64 sustained approximately
@@ -427,10 +442,13 @@ pixels is feasible within the requested unified-memory budget: batch 64 sustaine
 material throughput gain. Initial HighRes-v1 work will therefore start at batch 64. This is a
 hardware-readiness observation, not a classifier-performance result.
 
-No HighRes-v1 architecture, pretrained status, augmentation, seed set, training budget, quota, or
-model-selection rule is fixed in this draft. Those choices must be declared after the complete
-metadata audit and frozen selection manifest, but before materialised data are inspected for model
-performance.
+The practical series is frozen as ImageNet-pretrained RGB ResNet-50 for seeds 7, 17, and 42, batch
+64, learning rate 1e-4, at most 15 epochs, patience 4, train-only horizontal flip, and one-real/
+one-fake parent-paired sampling. Validation log loss selects each checkpoint and validation
+balanced accuracy selects its threshold. All seeds are reported; the numerically best seed is not
+substituted for the predeclared representative. A separate representation hypothesis compares RGB
+and FFT ResNet-50 from random initialisation with equal budgets, avoiding an unmatched RGB
+pretraining prior. Internal test is not constructed during these launches.
 
 ## 4.4 Historical H1-N models and equal-budget plan
 
@@ -643,14 +661,29 @@ warning fallback; this supports repeatable protocol execution but does not justi
 independent neural reruns are bitwise identical. Near-duplicates that are not connected by the
 declared `group_id`, exact SHA-256, or exact pHash remain a residual limitation of the split audit.
 
-## 5.6 Planned HighRes-v1 results table
+## 5.6 DANI data-gate and validation-only results
 
-To prevent accidental retrofitting of a conclusion, the planned analyses are represented explicitly
-as empty work items rather than as blank prose that could later be mistaken for completed evidence.
+The DANI image-byte audit is a completed result about the corpus, not about classifier quality. Its
+7,410 original rows contained no exact or near-duplicate leakage under the declared checks, but
+the unequal JPEG/PNG and L/RGB support correctly blocked training. After lossless source-raster
+canonicalisation, the repeated audit passed with uniform RGB PNG support and produced a frozen
+training manifest.
+
+The acquisition-metadata control quantifies the shortcut instead of discarding it. On validation,
+the original files yielded ROC-AUC 0.713427, balanced accuracy 0.660314, and macro-F1 0.552612.
+The canonical files yielded ROC-AUC 0.537373, balanced accuracy 0.573430, and macro-F1 0.509027.
+The remaining weak association may reflect canonical PNG size/content correlations; it is a
+dataset-bias warning and is unavailable to the pixel model as an explicit feature. The internal
+test was not evaluated for either control.
+
+At this snapshot the one-epoch MPS pilot has completed and the practical multi-seed validation
+series is running. Pilot metrics are excluded because the run was declared solely to test GPU
+allocation, data loading, checkpoint writing, and validation-only execution. Neural values will be
+inserted only after all three predeclared seeds complete; no partial seed result is promoted here.
 
 | Required result | Design rule | Status |
 | --- | --- | --- |
-| HighRes-v1 internal models | Architecture, representation, seed set, and equal-budget rule declared after the materialised corpus and split are frozen. | Not started; no model or metric exists. |
+| HighRes-v1 practical RGB models | Pretrained ResNet-50, seeds 7/17/42, fixed batch/learning-rate/epoch/patience and parent-paired sampler. | Validation-only series in progress; pilot excluded. |
 | HighRes-v1 representation comparison | Group-aware comparison only between models declared before internal test inspection. | Not started. |
 | Robustness study | Clean and each JPEG/resize/blur condition reported separately; no post-hoc merging. | Not started. |
 | External Synthbuster + RAISE-1k test | Locked until HighRes-v1 architecture, checkpoint rule, seeds, and threshold are frozen; report per generator, relation category, aggregate, and worst-generator values. | Locked, not opened. |
@@ -728,13 +761,19 @@ and one MPS-recorded RGB ResNet-50 pilot. These are historical exploratory resul
 Defactify benchmark. They neither complete the original RGB-versus-FFT comparison nor select a
 deployable model, and they cannot be relabelled as high-resolution evidence.
 
-The next academic phase is therefore not completion of the stopped H1-N series. It is the completion
-of the HighRes-v1 data audit, materialisation of a fixed corpus, leakage-aware split construction,
-and pre-registration of training and selection rules. Only then may internal, robustness, and locked
-Synthbuster + RAISE-1k evaluations be run. Until those stages produce artifacts, HighRes-v1 has no
-result and the local interface remains disabled. The project’s current academic result is therefore
-a transparent limitation-aware baseline and a reproducible high-resolution protocol, which is
-preferable to an inflated claim based on a source shortcut.
+The next academic phase is no longer data acquisition: DANI has passed lineage, licence,
+materialisation, duplicate, shortcut-normalisation, and split-isolation gates. The original-file
+metadata control showed measurable validation association, and its reduction after canonicalisation
+demonstrates why container support must be separated from pixel evidence. This is a genuine
+negative-and-corrective data result rather than a reason to discard the corpus silently.
+
+The pre-registered validation-only MPS series must now finish before internal test is opened. It is
+followed by the equal-initialisation RGB/FFT comparison, group-aware uncertainty, robustness, and
+locked Synthbuster + RAISE-1k transfer evaluation. Until those stages produce a selected and
+externally assessed checkpoint, the local interface remains disabled. The current academic result
+is therefore a transparent limitation-aware baseline, a reproducible high-resolution corpus, and
+an active but not yet complete neural experiment—preferable to an inflated claim based on a source
+shortcut or a favourable pilot epoch.
 
 ---
 
