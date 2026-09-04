@@ -283,8 +283,9 @@ does not remove the broader limitation that all images originate from one benchm
 The confirmatory evaluation is specified as Synthbuster synthetic images compared with the
 RAISE-1k real-photo subset [9]. It must remain absent from training, early stopping, threshold
 choice, augmentation choice, architecture choice, and seed selection. The local preparation utility
-does not automatically download it because RAISE-1k has a separate research license that must be
-accepted. Its planned manifest distinguishes DALL-E 3 and SDXL (same named generator); DALL-E 2,
+does not automatically download it: this keeps the benchmark locked and requires the operator to
+observe RAISE's stated non-commercial research and educational-use terms. Its planned manifest
+distinguishes DALL-E 3 and SDXL (same named generator); DALL-E 2,
 Midjourney v5, SD 1.3, and SD 1.4 (same family, different version); SD 2 (same family, version
 unspecified); and Firefly/GLIDE (unseen family). No pooled external score may be called an
 “unseen-generator” result. At the snapshot date, no external performance result is available.
